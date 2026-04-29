@@ -123,7 +123,7 @@ export default function App() {
   if (!userRole) return (
     <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6" dir="rtl">
         <div className="bg-[#0f0f0f] p-12 rounded-[3rem] border border-white/5 w-full max-w-lg text-center shadow-2xl">
-            <div className="mb-10 text-white font-black italic text-5xl tracking-tighter">STEEL<span className="text-red-600">.</span></div>
+            <div className="mb-10 text-white font-black italic text-5xl tracking-tighter">BeadWire<span className="text-red-600">.</span></div>
             <div className="space-y-5">
                 <input type="text" placeholder="ID الموظف" value={laborId} onChange={e=>setLaborId(e.target.value)} className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl text-white text-center outline-none focus:border-red-600 font-bold transition-all" />
                 <button onClick={()=>handleLogin('worker')} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black text-xl hover:bg-red-700 transition-all active:scale-95 shadow-xl shadow-red-600/10">دخول الموظفين</button>
