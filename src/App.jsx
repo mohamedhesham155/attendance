@@ -252,7 +252,7 @@ export default function App() {
                 <div className="space-y-2">
                     <label className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] ml-2">Select Category</label>
                     <select className="w-full p-5 bg-black border border-white/10 rounded-[2rem] text-white font-black text-xl outline-none focus:border-red-600 appearance-none cursor-pointer" value={leaveDates.type} onChange={e=>setLeaveDates({...leaveDates, type:e.target.value})}>
-                      <option value="سنوية">إجازة سنوية</option><option value="مرضي">إجازة مرضية</option><option value="عارضة">إجازة عارضة</option>
+                      <option value="سنوية">إجازة سنوية</option><option value="مرضي">إجازة مرضية</option><option value="عارضة">إجازة عارضة</option><option value="بدل"> بدل </option>
                     </select>
                 </div>
                 <div className="grid grid-cols-2 gap-6">
