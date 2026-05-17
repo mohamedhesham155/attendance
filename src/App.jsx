@@ -93,6 +93,15 @@ export default function App() {
   const [searchContact, setSearchContact] = useState("");
   const [selectedSection, setSelectedSection] = useState("all"); 
 
+  // دالة تسجيل الخروج الفعالة لتصفير الحالات بالكامل
+  const handleLogout = () => {
+    setUserRole(null);
+    setCurrentLabor(null);
+    setLaborId("");
+    setPassInput("");
+    setActiveTab('dashboard');
+  };
+
   // 1. جلب بيانات العمال (تحديث فوري عبر المراقب اللحظي)
   useEffect(() => {
     const unsubWorkers = onSnapshot(collection(db, "workers"), (snap) => {
@@ -103,6 +112,7 @@ export default function App() {
 
   // 2. جلب سجلات اليوم المختار (تحديث فوري وتحديث الإحصائيات معها)
   useEffect(() => {
+    if (!userRole) return; // حماية لعدم القراءة بدون تسجيل دخول
     setLoading(true);
     const q = query(collection(db, "factory_logs"), where("date", "==", selectedDate));
     const unsubLogs = onSnapshot(q, (snap) => {
@@ -110,16 +120,17 @@ export default function App() {
       setLoading(false);
     });
     return () => unsubLogs();
-  }, [selectedDate, activeTab]);
+  }, [selectedDate, activeTab, userRole]);
 
   // 3. مراقبة الطلبات المعلقة للإدارة لحظياً لضمان السرعة والظهور الفوري
   useEffect(() => {
+    if (!userRole || userRole === 'Technician') return;
     const q = query(collection(db, "factory_logs"), where("status", "==", "pending"));
     const unsubPending = onSnapshot(q, (snap) => {
       setPendingRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsubPending();
-  }, []);
+  }, [userRole]);
 
   // --- حساب إحصائيات الموظف الحالي تلقائياً من الفايربيز ---
   const laborStats = useMemo(() => {
@@ -214,6 +225,21 @@ export default function App() {
     }
   };
 
+  if (!userRole) return (
+    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6" dir="rtl">
+        <div className="bg-[#0f0f0f] p-12 rounded-[3rem] border border-white/5 w-full max-w-lg text-center shadow-2xl">
+            <div className="mb-10 text-white font-black italic text-5xl tracking-tighter">BeadWire<span className="text-red-600">.</span></div>
+            <div className="space-y-5">
+                <input type="text" placeholder="ID الموظف" value={laborId} onChange={e=>setLaborId(e.target.value)} className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl text-white text-center outline-none focus:border-red-600 font-bold transition-all" />
+                <button onClick={()=>handleLogin('worker')} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black text-xl hover:bg-red-700 transition-all active:scale-95 shadow-xl shadow-red-600/10">دخول الموظفين</button>
+                <div className="flex items-center gap-4 py-6"><div className="h-[1px] bg-white/5 flex-1"></div><span className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em]">Management</span><div className="h-[1px] bg-white/5 flex-1"></div></div>
+                <input type="password" placeholder="Password" value={passInput} onChange={e=>setPassInput(e.target.value)} className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white text-center outline-none focus:border-red-600 transition-all" />
+                <button onClick={()=>handleLogin('admin')} className="w-full bg-white text-black py-4 rounded-2xl font-black text-xs hover:bg-gray-200 transition-all uppercase">Admin Login</button>
+            </div>
+        </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#050505] text-gray-200 font-sans selection:bg-red-600" dir="rtl">
       {/* Header */}
@@ -226,7 +252,8 @@ export default function App() {
               <p className="text-[10px] text-red-600 font-black uppercase italic tracking-widest">{currentLabor?.dept || 'إدارة المركز'}</p>
             </div>
           </div>
-          <button onClick={()=>window.location.reload()} className="bg-white/5 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-black text-[10px] transition-all border border-white/5 uppercase">Logout</button>
+          {/* تم تعديل هذا الزر ليستدعي دالة تسجيل الخروج البرمجية السليمة */}
+          <button onClick={handleLogout} className="bg-white/5 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-black text-[10px] transition-all border border-white/5 uppercase">Logout</button>
         </div>
       </header>
 
