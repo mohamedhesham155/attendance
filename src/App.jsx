@@ -82,7 +82,11 @@ export default function App() {
   const [laborId, setLaborId] = useState("");
   const [passInput, setPassInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [queueLoading, setQueueLoading] = useState(false);
   
+  // تجميعة بيانات الموظف السنوية لتقليل القراءات وتحسين الحسابات الكروت
+  const [yearlyLaborLogs, setYearlyLaborLogs] = useState([]);
+
   // فلاتر التقارير
   const [reportRange, setReportRange] = useState({ start: "", end: "" });
   const [adminExportRange, setAdminExportRange] = useState({ start: "", end: "" });
@@ -99,10 +103,12 @@ export default function App() {
     setCurrentLabor(null);
     setLaborId("");
     setPassInput("");
+    setYearlyLaborLogs([]);
+    setPendingRequests([]);
     setActiveTab('dashboard');
   };
 
-  // 1. جلب بيانات العمال (تحديث فوري عبر المراقب اللحظي)
+  // 1. جلب بيانات العمال (مراقب لحظي مخفف)
   useEffect(() => {
     const unsubWorkers = onSnapshot(collection(db, "workers"), (snap) => {
       setAllWorkers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -110,9 +116,9 @@ export default function App() {
     return () => unsubWorkers();
   }, []);
 
-  // 2. جلب سجلات اليوم المختار (تحديث فوري وتحديث الإحصائيات معها)
+  // 2. جلب سجلات اليوم المختار فقط للرقابة (حماية لاستهلاك القراءات اليومية)
   useEffect(() => {
-    if (!userRole) return; // حماية لعدم القراءة بدون تسجيل دخول
+    if (!userRole) return; 
     setLoading(true);
     const q = query(collection(db, "factory_logs"), where("date", "==", selectedDate));
     const unsubLogs = onSnapshot(q, (snap) => {
@@ -120,30 +126,64 @@ export default function App() {
       setLoading(false);
     });
     return () => unsubLogs();
-  }, [selectedDate, activeTab, userRole]);
+  }, [selectedDate, userRole]);
 
-  // 3. مراقبة الطلبات المعلقة للإدارة لحظياً لضمان السرعة والظهور الفوري
+  // 3. جلب سجلات العام بالكامل للموظف الحالي مرة واحدة فقط عند الدخول لحساب كروته محلياً
   useEffect(() => {
-    if (!userRole || userRole === 'Technician') return;
-    const q = query(collection(db, "factory_logs"), where("status", "==", "pending"));
-    const unsubPending = onSnapshot(q, (snap) => {
-      setPendingRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsubPending();
-  }, [userRole]);
+    if (!currentLabor?.id) return;
+    
+    const fetchYearlyLogs = async () => {
+      try {
+        const q = query(
+          collection(db, "factory_logs"), 
+          where("workerId", "==", currentLabor.id),
+          where("date", ">=", "2026-01-01"),
+          where("date", "<=", "2026-12-31")
+        );
+        const snap = await getDocs(q);
+        setYearlyLaborLogs(snap.docs.map(d => d.data()));
+      } catch (e) {
+        console.error("Error fetching statistics:", e);
+      }
+    };
+    
+    fetchYearlyLogs();
+  }, [currentLabor, activeTab]); // إعادة الفحص برمجياً لضمان الدقة وتفادي الـ Sync اللحظي المستمر
 
-  // --- حساب إحصائيات الموظف الحالي تلقائياً من الفايربيز ---
+  // 4. دالة يدوية لجلب وتحديث قائمة الانتظار (Clearance Queue) برمجياً دون الحاجة لمراقب مستمر
+  const fetchPendingQueue = async () => {
+    if (!userRole || userRole === 'Technician') return;
+    setQueueLoading(true);
+    try {
+      const q = query(collection(db, "factory_logs"), where("status", "==", "pending"));
+      const snap = await getDocs(q);
+      setPendingRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      alert("خطأ أثناء جلب القائمة: " + e.message);
+    } finally {
+      setQueueLoading(false);
+    }
+  };
+
+  // جلب القائمة لأول مرة تلقائياً عند فتح تاب الإدارة فقط
+  useEffect(() => {
+    if (activeTab === 'admin_panel') {
+      fetchPendingQueue();
+    }
+  }, [activeTab]);
+
+  // --- حساب إحصائيات الموظف محلياً على مدار السنة بالكامل من 1-1-2026 إلى نهاية السنة (0 قراءات إضافية) ---
   const laborStats = useMemo(() => {
-    if (!currentLabor) return null;
+    if (!currentLabor || yearlyLaborLogs.length === 0) {
+      return { attendance: 0, annual: 0, sick: 0, casual: 0, rest: 0, absent: 0 };
+    }
     
-    const myLogs = allData.filter(l => l.workerId === currentLabor.id);
-    
-    const attendanceCount = myLogs.filter(l => l.type === 'attendance').length;
-    const annualCount = myLogs.filter(l => l.type === 'leave' && l.leaveType === 'سنوية' && l.status === 'approved').length;
-    const sickCount = myLogs.filter(l => l.type === 'leave' && l.leaveType === 'مرضي' && l.status === 'approved').length;
-    const casualCount = myLogs.filter(l => l.type === 'leave' && l.leaveType === 'عارضة' && l.status === 'approved').length;
-    const restCount = myLogs.filter(l => l.type === 'leave' && l.leaveType === 'بدل' && l.status === 'approved').length;
-    const absentCount = myLogs.filter(l => l.type === 'absence' || (l.status === 'confirmed' && l.type === 'absence')).length;
+    const attendanceCount = yearlyLaborLogs.filter(l => l.type === 'attendance').length;
+    const annualCount = yearlyLaborLogs.filter(l => l.type === 'leave' && l.leaveType === 'سنوية' && l.status === 'approved').length;
+    const sickCount = yearlyLaborLogs.filter(l => l.type === 'leave' && l.leaveType === 'مرضي' && l.status === 'approved').length;
+    const casualCount = yearlyLaborLogs.filter(l => l.type === 'leave' && l.leaveType === 'عارضة' && l.status === 'approved').length;
+    const restCount = yearlyLaborLogs.filter(l => l.type === 'leave' && l.leaveType === 'بدل' && l.status === 'approved').length;
+    const absentCount = yearlyLaborLogs.filter(l => l.type === 'absence' || (l.status === 'confirmed' && l.type === 'absence')).length;
 
     return {
       attendance: attendanceCount,
@@ -153,7 +193,7 @@ export default function App() {
       rest: restCount,
       absent: absentCount
     };
-  }, [allData, currentLabor]);
+  }, [yearlyLaborLogs, currentLabor]);
 
   // تصفية أرقام الهواتف بناء على القسم وكلمة البحث
   const filteredContacts = useMemo(() => {
@@ -174,7 +214,7 @@ export default function App() {
     return list;
   }, [searchContact, selectedSection]);
 
-  // 4. تقرير الفترة الشخصي
+  // تقرير الفترة الشخصي للموظف
   const fetchPersonalReport = async () => {
     if(!reportRange.start || !reportRange.end) return alert("يرجى تحديد الفترة");
     setLoading(true);
@@ -186,7 +226,7 @@ export default function App() {
     setLoading(false);
   };
 
-  // 5. تصدير إكسيل الفترة للإدارة
+  // تصدير إكسيل الفترة للإدارة
   const handleAdminExport = async () => {
     if(!adminExportRange.start || !adminExportRange.end) return alert("اختر الفترة للتصدير");
     setLoading(true);
@@ -252,7 +292,6 @@ export default function App() {
               <p className="text-[10px] text-red-600 font-black uppercase italic tracking-widest">{currentLabor?.dept || 'إدارة المركز'}</p>
             </div>
           </div>
-          {/* تم تعديل هذا الزر ليستدعي دالة تسجيل الخروج البرمجية السليمة */}
           <button onClick={handleLogout} className="bg-white/5 hover:bg-red-600 text-white px-6 py-2.5 rounded-xl font-black text-[10px] transition-all border border-white/5 uppercase">Logout</button>
         </div>
       </header>
@@ -327,38 +366,39 @@ export default function App() {
 
         {activeTab === 'request' && (
           <div className="space-y-12">
-            {/* الداشبورد الإحصائي للموظف */}
-            {laborStats && (
-              <div className="bg-[#0f0f0f] p-8 rounded-[3rem] border border-white/5 shadow-2xl animate-in fade-in duration-300">
-                <h3 className="text-2xl font-black text-white italic mb-6 border-r-4 border-red-600 pr-4 leading-none uppercase">الرصيد الإحصائي للأيام</h3>
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
-                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام الحضور</p>
-                    <h4 className="text-3xl font-black text-green-500 italic">{laborStats.attendance}</h4>
-                  </div>
-                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
-                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة سنوية</p>
-                    <h4 className="text-3xl font-black text-red-600 italic">{laborStats.annual}</h4>
-                  </div>
-                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
-                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة مرضية</p>
-                    <h4 className="text-3xl font-black text-orange-500 italic">{laborStats.sick}</h4>
-                  </div>
-                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
-                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة عارضة</p>
-                    <h4 className="text-3xl font-black text-yellow-500 italic">{laborStats.casual}</h4>
-                  </div>
-                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
-                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام البدل</p>
-                    <h4 className="text-3xl font-black text-blue-500 italic">{laborStats.rest}</h4>
-                  </div>
-                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
-                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام الغياب</p>
-                    <h4 className="text-3xl font-black text-red-500 italic">{laborStats.absent}</h4>
-                  </div>
+            {/* الداشبورد الإحصائي السنوي للموظف (محسوب محلياً من 1-1-2026 حتي نهاية السنة) */}
+            <div className="bg-[#0f0f0f] p-8 rounded-[3rem] border border-white/5 shadow-2xl animate-in fade-in duration-300">
+              <div className="flex justify-between items-center mb-6 border-r-4 border-red-600 pr-4">
+                <h3 className="text-2xl font-black text-white italic leading-none uppercase">الرصيد الإحصائي السنوي لعام 2026</h3>
+                <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">من 01-01-2026 إلى 31-12-2026</span>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                  <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام الحضور</p>
+                  <h4 className="text-3xl font-black text-green-500 italic">{laborStats.attendance}</h4>
+                </div>
+                <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                  <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة سنوية</p>
+                  <h4 className="text-3xl font-black text-red-600 italic">{laborStats.annual}</h4>
+                </div>
+                <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                  <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة مرضية</p>
+                  <h4 className="text-3xl font-black text-orange-500 italic">{laborStats.sick}</h4>
+                </div>
+                <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                  <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة عارضة</p>
+                  <h4 className="text-3xl font-black text-yellow-500 italic">{laborStats.casual}</h4>
+                </div>
+                <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                  <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام البدل</p>
+                  <h4 className="text-3xl font-black text-blue-500 italic">{laborStats.rest}</h4>
+                </div>
+                <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                  <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام الغياب</p>
+                  <h4 className="text-3xl font-black text-red-500 italic">{laborStats.absent}</h4>
                 </div>
               </div>
-            )}
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-6xl mx-auto py-4">
               {/* Punch Card */}
@@ -371,16 +411,20 @@ export default function App() {
                       const q = query(collection(db, "factory_logs"), where("workerId", "==", currentLabor.id), where("date", "==", getEgyptDate()), where("type", "==", "attendance"));
                       const snap = await getDocs(q);
                       snap.forEach(async (doc) => await deleteDoc(doc.ref));
-                      alert("تم مسح السجل اليومي"); window.location.reload();
+                      // تحديث الـ state المحلي فوراً لتقليل سحب القراءات
+                      setYearlyLaborLogs(prev => prev.filter(l => !(l.date === getEgyptDate() && l.type === 'attendance')));
+                      alert("تم مسح السجل اليومي");
                     }} className="text-red-600 font-black underline text-sm uppercase tracking-widest hover:text-black transition-all">Cancel Mistakes</button>
                   </div>
                 ) : (
                   <button onClick={async()=>{
                     const today = getEgyptDate();
-                    await addDoc(collection(db,"factory_logs"),{ 
+                    const newLog = { 
                       workerId: currentLabor.id, name: currentLabor.name, dept: currentLabor.dept || "إدارة", shift: currentLabor.shift || "عام", 
-                      type:'attendance', date:today, status:'confirmed', createdAt:serverTimestamp() 
-                    });
+                      type:'attendance', date:today, status:'confirmed'
+                    };
+                    await addDoc(collection(db,"factory_logs"),{ ...newLog, createdAt:serverTimestamp() });
+                    setYearlyLaborLogs(prev => [...prev, newLog]); // إضافة محلياً
                     alert("Attendance Logged!"); setActiveTab('dashboard');
                   }} className="w-full bg-red-600 text-white py-24 rounded-[3.5rem] font-black text-8xl shadow-2xl shadow-red-600/40 active:scale-95 transition-all italic tracking-tighter hover:bg-red-700">PUNCH</button>
                 )}
@@ -406,13 +450,18 @@ export default function App() {
                   <button onClick={async () => {
                      if (!leaveDates.start) return alert("يرجى تحديد التاريخ");
                      let curr = new Date(leaveDates.start); const end = new Date(leaveDates.end || leaveDates.start);
+                     const addedLogs = [];
                      while (curr <= end) {
-                       await addDoc(collection(db, "factory_logs"), { 
+                       const logDate = curr.toISOString().split('T')[0];
+                       const logItem = { 
                          workerId: currentLabor.id, name: currentLabor.name, dept: currentLabor.dept || "إدارة", shift: currentLabor.shift || "عام", 
-                         type: 'leave', leaveType: leaveDates.type, date: curr.toISOString().split('T')[0], status: 'pending', createdAt: serverTimestamp() 
-                       });
+                         type: 'leave', leaveType: leaveDates.type, date: logDate, status: 'pending'
+                       };
+                       await addDoc(collection(db, "factory_logs"), { ...logItem, createdAt: serverTimestamp() });
+                       addedLogs.push(logItem);
                        curr.setDate(curr.getDate() + 1);
                      }
+                     setYearlyLaborLogs(prev => [...prev, ...addedLogs]); // تحديث الكروت محلياً فوراً
                      alert("تم إرسال الطلبات بنجاح"); setActiveTab('dashboard');
                   }} className="w-full bg-white text-black py-7 rounded-[2.5rem] font-black text-2xl hover:bg-red-600 hover:text-white transition-all shadow-2xl uppercase tracking-tighter">Submit Application</button>
                 </div>
@@ -459,7 +508,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* أزرار الفلترة بحسب الأقسام المطلوبة */}
               <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
                 {[
                   { id: "all", label: "الكل" },
@@ -538,10 +586,18 @@ export default function App() {
               <div className="absolute -right-20 -bottom-20 text-[25rem] font-black text-white/5 italic select-none">STEEL</div>
             </div>
 
-            {/* Global Pending List */}
+            {/* Global Pending List (Clearance Queue) */}
             <div className="bg-[#0f0f0f] p-12 rounded-[4rem] border border-white/5 shadow-3xl">
-              <div className="flex justify-between items-center mb-12 border-b-2 border-white/5 pb-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-12 border-b-2 border-white/5 pb-6">
                   <h3 className="text-2xl font-black italic text-red-600 uppercase tracking-[0.3em]">Clearance Queue</h3>
+                  {/* زر التحديث البرمجي اليدوي لتقليل استهلاك استعلامات الداتا بيز */}
+                  <button 
+                    onClick={fetchPendingQueue} 
+                    disabled={queueLoading}
+                    className="bg-white/5 border border-white/10 hover:bg-red-600 hover:text-white text-gray-300 px-6 py-3 rounded-2xl font-black text-xs transition-all active:scale-95 flex items-center gap-2"
+                  >
+                    {queueLoading ? "جاري جلب البيانات..." : "تحديث القائمة 🔄"}
+                  </button>
               </div>
               <div className="space-y-5">
                 {pendingRequests.map(req => (
@@ -553,18 +609,20 @@ export default function App() {
                     <div className="flex gap-4 w-full md:w-auto">
                       <button onClick={async() => {
                           await updateDoc(doc(db,"factory_logs",req.id), {status:'approved'});
+                          // تحديث الحالة محلياً فوراً لمنع القراءات المكررة وإعادة الـ Fetch للواجهة
                           setPendingRequests(prev => prev.filter(i => i.id !== req.id));
                           alert("Approved");
                       }} className="flex-1 bg-green-600 px-10 py-4.5 rounded-[1.5rem] font-black text-[11px] uppercase shadow-lg shadow-green-600/10">Approve</button>
                       <button onClick={async() => {
                           await updateDoc(doc(db,"factory_logs",req.id), {status:'rejected'});
+                          // تحديث الحالة محلياً فوراً لمنع القراءات المكررة وإعادة الـ Fetch للواجهة
                           setPendingRequests(prev => prev.filter(i => i.id !== req.id));
                           alert("Rejected");
                       }} className="flex-1 bg-red-600 px-10 py-4.5 rounded-[1.5rem] font-black text-[11px] uppercase shadow-lg shadow-red-600/10">Reject</button>
                     </div>
                   </div>
                 ))}
-                {pendingRequests.length === 0 && <p className="text-center py-20 text-gray-800 font-black italic uppercase tracking-widest text-sm opacity-50">No pending clearances.</p>}
+                {pendingRequests.length === 0 && !queueLoading && <p className="text-center py-20 text-gray-800 font-black italic uppercase tracking-widest text-sm opacity-50">No pending clearances.</p>}
               </div>
             </div>
           </div>
