@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { db } from './firebase';
 import { 
   collection, addDoc, updateDoc, doc, getDocs, deleteDoc,
-  query, serverTimestamp, getDoc, orderBy, where 
+  query, serverTimestamp, getDoc, orderBy, where, onSnapshot 
 } from 'firebase/firestore';
 
 // دالة لجلب التاريخ الحالي بتوقيت مصر بصيغة YYYY-MM-DD
@@ -27,6 +27,50 @@ const exportToCSV = (data, fileName = "Factory_Report") => {
   link.click();
 };
 
+// --- دليل الهواتف مع تعريب المسميات الوظيفية وتقسيمها إلى فئات ---
+const CONTACTS_DATA = [
+  // --- قسم البرونز (Bronze) ---
+  { name: "Adel", role: "مشرف برونز", section: "bronze", phones: ["+201070929696", "+201009090868"] },
+  { name: "Mohamed Ahmed", role: "مشرف برونز", section: "bronze", phones: ["+201115590891", "+201031150016"] },
+  { name: "Mohamed Ragab", role: "مشرف برونز", section: "bronze", phones: ["+201022232588", "+201274047778"] },
+  { name: "Ahmed Fakhry", role: "مشغل بداية خط البرونز (Pay-off)", section: "bronze", phones: ["+201020052942"] },
+  { name: "Mahmoud El Barbary", role: "مشغل بداية خط البرونز (Pay-off)", section: "bronze", phones: ["+201050456443"] },
+  { name: "Abd El Razak", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201029053342"] },
+  { name: "Ahmed Ibrahim", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201028325090"] },
+  { name: "Ahmed Mahmoud", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201113909053", "+201050456448"] },
+  { name: "El Said Reda", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201019407133"] },
+  { name: "Ibrahim El Belihy", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201050214420"] },
+  { name: "Amen", role: "مشغل حوض خط البرونز", section: "bronze", phones: ["+201069163207"] },
+  { name: "Hossam Talat", role: "مشغل حوض خط البرونز", section: "bronze", phones: ["+201050456338"] },
+  { name: "Mohamed Saeed", role: "مشغل حوض خط البرونز", section: "bronze", phones: ["+201065825752"] },
+
+  // --- قسم السحب (Drawing) ---
+  { name: "Ali Emmam", role: "مشغل خط السحب", section: "drawing", phones: ["+201090544630"] },
+  { name: "Mohamed Abdallah", role: "مشغل خط السحب", section: "drawing", phones: ["+201019440119"] },
+  { name: "Mohamed Nasr", role: "مشغل خط السحب", section: "drawing", phones: ["+201000899480"] },
+  { name: "Mahmoud Attia", role: "مشرف قسم السحب", section: "drawing", phones: ["+201003270071"] },
+  { name: "Saeed", role: "مشرف قسم السحب", section: "drawing", phones: ["+201022232570"] },
+
+  // --- قسم المهندسين (Engineers) ---
+  { name: "ENG. Mahmoud Heikel", role: "مهندس كهرباء", section: "engineers", phones: ["+201003687051"] },
+  { name: "ENG. Islam Yousef", role: "مهندس ميكانيكا", section: "engineers", phones: ["+201017003989"] },
+  { name: "ENG. Mohamed Ibrahim", role: "مهندس ميكانيكا", section: "engineers", phones: ["+201069801727"] },
+  { name: "ENG. Anas Mostafa", role: "مهندس إنتاج", section: "engineers", phones: ["+201060079724"] },
+  { name: "ENG. Bahaa El Sayed", role: "مهندس إنتاج", section: "engineers", phones: ["+201006656483"] },
+  { name: "ENG. Mohamed Hesham", role: "مهندس إنتاج", section: "engineers", phones: ["+201278731692", "+201023010020"] },
+  { name: "ENG. Mostafa Abu Bakr", role: "مدير الإنتاج", section: "engineers", phones: ["+201002581174"] },
+  { name: "ENG. Tarek Saeed", role: "مهندس جودة", section: "engineers", phones: ["+201022537327"] },
+  { name: "ENG. Mohamed Khaled", role: "رئيس قسم الجودة", section: "engineers", phones: ["+201006131360"] },
+
+  // --- قسم الإدارة والخدمات واللوجستيات الأخرى ---
+  { name: "Ashraf Abdelhalim", role: "مسؤول الموارد البشرية (HR)", section: "others", phones: ["+201002144125"] },
+  { name: "Ahmed Abo Tabl", role: "مشرف جودة", section: "others", phones: ["+201021048939", "+201008756339"] },
+  { name: "Adel Abdallah", role: "مسؤول الأمن", section: "others", phones: ["+201025738113"] },
+  { name: "Islam Gamal", role: "أمين المخزن", section: "others", phones: ["+201096773561"] },
+  { name: "Hassan Mohamed", role: "مسؤول البوفيه", section: "others", phones: ["+201050226628"] },
+  { name: "Mr. Amol", role: "مستشار فني", section: "others", phones: ["+201029728153"] }
+];
+
 export default function App() {
   const [userRole, setUserRole] = useState(null); 
   const [currentLabor, setCurrentLabor] = useState(null);
@@ -45,39 +89,79 @@ export default function App() {
   const [personalLogs, setPersonalLogs] = useState([]);
   const [leaveDates, setLeaveDates] = useState({ start: "", end: "", type: "سنوية" });
 
-  // 1. جلب بيانات العمال (مرة واحدة عند التحميل)
+  // فلاتر دليل الهواتف
+  const [searchContact, setSearchContact] = useState("");
+  const [selectedSection, setSelectedSection] = useState("all"); 
+
+  // 1. جلب بيانات العمال (تحديث فوري عبر المراقب اللحظي)
   useEffect(() => {
-    const fetchWorkers = async () => {
-      const snap = await getDocs(collection(db, "workers"));
+    const unsubWorkers = onSnapshot(collection(db, "workers"), (snap) => {
       setAllWorkers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    };
-    fetchWorkers();
+    });
+    return () => unsubWorkers();
   }, []);
 
-  // 2. جلب سجلات اليوم المختار (تحديث عند تغيير التاريخ أو التبويب)
+  // 2. جلب سجلات اليوم المختار (تحديث فوري وتحديث الإحصائيات معها)
   useEffect(() => {
-    const fetchLogs = async () => {
-      setLoading(true);
-      const q = query(collection(db, "factory_logs"), where("date", "==", selectedDate));
-      const snap = await getDocs(q);
+    setLoading(true);
+    const q = query(collection(db, "factory_logs"), where("date", "==", selectedDate));
+    const unsubLogs = onSnapshot(q, (snap) => {
       setAllData(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       setLoading(false);
-    };
-    fetchLogs();
+    });
+    return () => unsubLogs();
   }, [selectedDate, activeTab]);
 
-  // 3. جلب الطلبات المعلقة للإدارة (منفصلة لضمان الظهور)
-  const fetchPending = async () => {
-    setLoading(true);
-    const q = query(collection(db, "factory_logs"), where("status", "==", "pending"));
-    const snap = await getDocs(q);
-    setPendingRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    setLoading(false);
-  };
-
+  // 3. مراقبة الطلبات المعلقة للإدارة لحظياً لضمان السرعة والظهور الفوري
   useEffect(() => {
-    if(activeTab === 'admin_panel') fetchPending();
-  }, [activeTab]);
+    const q = query(collection(db, "factory_logs"), where("status", "==", "pending"));
+    const unsubPending = onSnapshot(q, (snap) => {
+      setPendingRequests(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+    return () => unsubPending();
+  }, []);
+
+  // --- حساب إحصائيات الموظف الحالي تلقائياً من الفايربيز ---
+  const laborStats = useMemo(() => {
+    if (!currentLabor) return null;
+    
+    const myLogs = allData.filter(l => l.workerId === currentLabor.id);
+    
+    const attendanceCount = myLogs.filter(l => l.type === 'attendance').length;
+    const annualCount = myLogs.filter(l => l.type === 'leave' && l.leaveType === 'سنوية' && l.status === 'approved').length;
+    const sickCount = myLogs.filter(l => l.type === 'leave' && l.leaveType === 'مرضي' && l.status === 'approved').length;
+    const casualCount = myLogs.filter(l => l.type === 'leave' && l.leaveType === 'عارضة' && l.status === 'approved').length;
+    const restCount = myLogs.filter(l => l.type === 'leave' && l.leaveType === 'بدل' && l.status === 'approved').length;
+    const absentCount = myLogs.filter(l => l.type === 'absence' || (l.status === 'confirmed' && l.type === 'absence')).length;
+
+    return {
+      attendance: attendanceCount,
+      annual: annualCount,
+      sick: sickCount,
+      casual: casualCount,
+      rest: restCount,
+      absent: absentCount
+    };
+  }, [allData, currentLabor]);
+
+  // تصفية أرقام الهواتف بناء على القسم وكلمة البحث
+  const filteredContacts = useMemo(() => {
+    let list = CONTACTS_DATA;
+    
+    if (selectedSection !== "all") {
+      list = list.filter(c => c.section === selectedSection);
+    }
+
+    const queryStr = searchContact.toLowerCase().trim();
+    if (queryStr) {
+      list = list.filter(c => 
+        c.name.toLowerCase().includes(queryStr) || 
+        c.role.toLowerCase().includes(queryStr)
+      );
+    }
+    
+    return list;
+  }, [searchContact, selectedSection]);
 
   // 4. تقرير الفترة الشخصي
   const fetchPersonalReport = async () => {
@@ -112,28 +196,23 @@ export default function App() {
 
   const handleLogin = async (type) => {
     const id = type === 'admin' ? passInput : laborId;
-    const snap = await getDoc(doc(db, type === 'admin' ? "admins" : "workers", id));
-    if (snap.exists()) {
-      setUserRole(snap.data().role);
-      setCurrentLabor({ id: snap.id, ...snap.data() });
-      setActiveTab(type === 'admin' ? 'dashboard' : 'request');
-    } else alert("البيانات غير صحيحة");
+    if (!id) return alert("يرجى إدخال البيانات المطلوبة");
+    setLoading(true);
+    try {
+      const snap = await getDoc(doc(db, type === 'admin' ? "admins" : "workers", id));
+      if (snap.exists()) {
+        setUserRole(snap.data().role || (type === 'admin' ? 'Admin' : 'Technician'));
+        setCurrentLabor({ id: snap.id, ...snap.data() });
+        setActiveTab(type === 'admin' ? 'dashboard' : 'request');
+      } else {
+        alert("البيانات غير صحيحة");
+      }
+    } catch (e) {
+      alert("خطأ في الاتصال: " + e.message);
+    } finally {
+      setLoading(false);
+    }
   };
-
-  if (!userRole) return (
-    <div className="min-h-screen bg-[#050505] flex items-center justify-center p-6" dir="rtl">
-        <div className="bg-[#0f0f0f] p-12 rounded-[3rem] border border-white/5 w-full max-w-lg text-center shadow-2xl">
-            <div className="mb-10 text-white font-black italic text-5xl tracking-tighter">BeadWire<span className="text-red-600">.</span></div>
-            <div className="space-y-5">
-                <input type="text" placeholder="ID الموظف" value={laborId} onChange={e=>setLaborId(e.target.value)} className="w-full p-5 bg-white/5 border border-white/10 rounded-2xl text-white text-center outline-none focus:border-red-600 font-bold transition-all" />
-                <button onClick={()=>handleLogin('worker')} className="w-full bg-red-600 text-white py-5 rounded-2xl font-black text-xl hover:bg-red-700 transition-all active:scale-95 shadow-xl shadow-red-600/10">دخول الموظفين</button>
-                <div className="flex items-center gap-4 py-6"><div className="h-[1px] bg-white/5 flex-1"></div><span className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em]">Management</span><div className="h-[1px] bg-white/5 flex-1"></div></div>
-                <input type="password" placeholder="Password" value={passInput} onChange={e=>setPassInput(e.target.value)} className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl text-white text-center outline-none focus:border-red-600 transition-all" />
-                <button onClick={()=>handleLogin('admin')} className="w-full bg-white text-black py-4 rounded-2xl font-black text-xs hover:bg-gray-200 transition-all uppercase">Admin Login</button>
-            </div>
-        </div>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-[#050505] text-gray-200 font-sans selection:bg-red-600" dir="rtl">
@@ -153,7 +232,7 @@ export default function App() {
 
       <main className="max-w-7xl mx-auto p-6">
         {/* Navigation Tabs */}
-        <div className="flex bg-[#0f0f0f] p-1.5 rounded-2xl border border-white/5 mb-12 w-fit mx-auto sm:mx-0 shadow-2xl">
+        <div className="flex flex-wrap gap-2 bg-[#0f0f0f] p-1.5 rounded-2xl border border-white/5 mb-12 w-fit mx-auto sm:mx-0 shadow-2xl">
           {userRole !== 'Technician' && (
             <>
               <button onClick={()=>setActiveTab('dashboard')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='dashboard'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>الرقابة</button>
@@ -162,6 +241,7 @@ export default function App() {
           )}
           <button onClick={()=>setActiveTab('request')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='request'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>تسجيل</button>
           <button onClick={()=>setActiveTab('my_history')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='my_history'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>سجلي</button>
+          <button onClick={()=>setActiveTab('contacts')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='contacts'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>📞 دليل الهاتف</button>
         </div>
 
         {activeTab === 'dashboard' && (
@@ -219,58 +299,96 @@ export default function App() {
         )}
 
         {activeTab === 'request' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-6xl mx-auto py-10">
-            {/* Punch Card */}
-            <div className="bg-white p-16 rounded-[4.5rem] text-center shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] border-b-[25px] border-red-600 transform hover:-translate-y-3 transition-all duration-700">
-              <h3 className="text-black text-4xl font-black mb-16 italic uppercase border-b-4 border-gray-100 pb-6 tracking-tighter">Factory Stamp</h3>
-              {allData.find(l => l.workerId === currentLabor.id && l.date === getEgyptDate() && l.type === 'attendance') ? (
-                <div className="space-y-8 py-6 animate-in zoom-in duration-500">
-                  <div className="bg-green-100 text-green-700 p-12 rounded-[3.5rem] font-black text-3xl italic shadow-inner">VERIFIED ✅</div>
-                  <button onClick={async () => {
-                    const q = query(collection(db, "factory_logs"), where("workerId", "==", currentLabor.id), where("date", "==", getEgyptDate()), where("type", "==", "attendance"));
-                    const snap = await getDocs(q);
-                    snap.forEach(async (doc) => await deleteDoc(doc.ref));
-                    alert("تم مسح السجل اليومي"); window.location.reload();
-                  }} className="text-red-600 font-black underline text-sm uppercase tracking-widest hover:text-black transition-all">Cancel Mistakes</button>
+          <div className="space-y-12">
+            {/* الداشبورد الإحصائي للموظف */}
+            {laborStats && (
+              <div className="bg-[#0f0f0f] p-8 rounded-[3rem] border border-white/5 shadow-2xl animate-in fade-in duration-300">
+                <h3 className="text-2xl font-black text-white italic mb-6 border-r-4 border-red-600 pr-4 leading-none uppercase">الرصيد الإحصائي للأيام</h3>
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام الحضور</p>
+                    <h4 className="text-3xl font-black text-green-500 italic">{laborStats.attendance}</h4>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة سنوية</p>
+                    <h4 className="text-3xl font-black text-red-600 italic">{laborStats.annual}</h4>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة مرضية</p>
+                    <h4 className="text-3xl font-black text-orange-500 italic">{laborStats.sick}</h4>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">إجازة عارضة</p>
+                    <h4 className="text-3xl font-black text-yellow-500 italic">{laborStats.casual}</h4>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام البدل</p>
+                    <h4 className="text-3xl font-black text-blue-500 italic">{laborStats.rest}</h4>
+                  </div>
+                  <div className="bg-white/[0.02] border border-white/5 p-5 rounded-2xl text-center">
+                    <p className="text-[9px] text-gray-500 uppercase font-black tracking-wider mb-2">أيام الغياب</p>
+                    <h4 className="text-3xl font-black text-red-500 italic">{laborStats.absent}</h4>
+                  </div>
                 </div>
-              ) : (
-                <button onClick={async()=>{
-                  const today = getEgyptDate();
-                  await addDoc(collection(db,"factory_logs"),{ 
-                    workerId: currentLabor.id, name: currentLabor.name, dept: currentLabor.dept || "إدارة", shift: currentLabor.shift || "عام", 
-                    type:'attendance', date:today, status:'confirmed', createdAt:serverTimestamp() 
-                  });
-                  alert("Attendance Logged!"); setActiveTab('dashboard');
-                }} className="w-full bg-red-600 text-white py-24 rounded-[3.5rem] font-black text-8xl shadow-2xl shadow-red-600/40 active:scale-95 transition-all italic tracking-tighter hover:bg-red-700">PUNCH</button>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Leave Control */}
-            <div className="bg-[#0f0f0f] p-12 rounded-[4.5rem] border border-white/5 shadow-3xl">
-              <h3 className="text-3xl font-black mb-12 italic text-red-600 uppercase border-b-2 border-white/5 pb-6 tracking-widest">Leave Request</h3>
-              <div className="space-y-8">
-                <div className="space-y-2">
-                    <label className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] ml-2">Select Category</label>
-                    <select className="w-full p-5 bg-black border border-white/10 rounded-[2rem] text-white font-black text-xl outline-none focus:border-red-600 appearance-none cursor-pointer" value={leaveDates.type} onChange={e=>setLeaveDates({...leaveDates, type:e.target.value})}>
-                      <option value="سنوية">إجازة سنوية</option><option value="مرضي">إجازة مرضية</option><option value="عارضة">إجازة عارضة</option><option value="بدل"> بدل </option>
-                    </select>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-6xl mx-auto py-4">
+              {/* Punch Card */}
+              <div className="bg-white p-16 rounded-[4.5rem] text-center shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] border-b-[25px] border-red-600 transform hover:-translate-y-3 transition-all duration-700">
+                <h3 className="text-black text-4xl font-black mb-16 italic uppercase border-b-4 border-gray-100 pb-6 tracking-tighter">Factory Stamp</h3>
+                {allData.find(l => l.workerId === currentLabor.id && l.date === getEgyptDate() && l.type === 'attendance') ? (
+                  <div className="space-y-8 py-6 animate-in zoom-in duration-500">
+                    <div className="bg-green-100 text-green-700 p-12 rounded-[3.5rem] font-black text-3xl italic shadow-inner">VERIFIED ✅</div>
+                    <button onClick={async () => {
+                      const q = query(collection(db, "factory_logs"), where("workerId", "==", currentLabor.id), where("date", "==", getEgyptDate()), where("type", "==", "attendance"));
+                      const snap = await getDocs(q);
+                      snap.forEach(async (doc) => await deleteDoc(doc.ref));
+                      alert("تم مسح السجل اليومي"); window.location.reload();
+                    }} className="text-red-600 font-black underline text-sm uppercase tracking-widest hover:text-black transition-all">Cancel Mistakes</button>
+                  </div>
+                ) : (
+                  <button onClick={async()=>{
+                    const today = getEgyptDate();
+                    await addDoc(collection(db,"factory_logs"),{ 
+                      workerId: currentLabor.id, name: currentLabor.name, dept: currentLabor.dept || "إدارة", shift: currentLabor.shift || "عام", 
+                      type:'attendance', date:today, status:'confirmed', createdAt:serverTimestamp() 
+                    });
+                    alert("Attendance Logged!"); setActiveTab('dashboard');
+                  }} className="w-full bg-red-600 text-white py-24 rounded-[3.5rem] font-black text-8xl shadow-2xl shadow-red-600/40 active:scale-95 transition-all italic tracking-tighter hover:bg-red-700">PUNCH</button>
+                )}
+              </div>
+
+              {/* Leave Control */}
+              <div className="bg-[#0f0f0f] p-12 rounded-[4.5rem] border border-white/5 shadow-3xl">
+                <h3 className="text-3xl font-black mb-12 italic text-red-600 uppercase border-b-2 border-white/5 pb-6 tracking-widest">Leave Request</h3>
+                <div className="space-y-8">
+                  <div className="space-y-2">
+                      <label className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] ml-2">Select Category</label>
+                      <select className="w-full p-5 bg-black border border-white/10 rounded-[2rem] text-white font-black text-xl outline-none focus:border-red-600 appearance-none cursor-pointer" value={leaveDates.type} onChange={e=>setLeaveDates({...leaveDates, type:e.target.value})}>
+                        <option value="سنوية">إجازة سنوية</option>
+                        <option value="مرضي">إجازة مرضية</option>
+                        <option value="عارضة">إجازة عارضة</option>
+                        <option value="بدل"> بدل </option>
+                      </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2"><label className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] ml-2">Start</label><input type="date" className="w-full p-5 bg-black border border-white/10 rounded-[2rem] text-white font-bold outline-none focus:border-red-600 transition-all" onChange={e=>setLeaveDates({...leaveDates, start:e.target.value})} /></div>
+                    <div className="space-y-2"><label className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] ml-2">End</label><input type="date" className="w-full p-5 bg-black border border-white/10 rounded-[2rem] text-white font-bold outline-none focus:border-red-600 transition-all" onChange={e=>setLeaveDates({...leaveDates, end:e.target.value})} /></div>
+                  </div>
+                  <button onClick={async () => {
+                     if (!leaveDates.start) return alert("يرجى تحديد التاريخ");
+                     let curr = new Date(leaveDates.start); const end = new Date(leaveDates.end || leaveDates.start);
+                     while (curr <= end) {
+                       await addDoc(collection(db, "factory_logs"), { 
+                         workerId: currentLabor.id, name: currentLabor.name, dept: currentLabor.dept || "إدارة", shift: currentLabor.shift || "عام", 
+                         type: 'leave', leaveType: leaveDates.type, date: curr.toISOString().split('T')[0], status: 'pending', createdAt: serverTimestamp() 
+                       });
+                       curr.setDate(curr.getDate() + 1);
+                     }
+                     alert("تم إرسال الطلبات بنجاح"); setActiveTab('dashboard');
+                  }} className="w-full bg-white text-black py-7 rounded-[2.5rem] font-black text-2xl hover:bg-red-600 hover:text-white transition-all shadow-2xl uppercase tracking-tighter">Submit Application</button>
                 </div>
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2"><label className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] ml-2">Start</label><input type="date" className="w-full p-5 bg-black border border-white/10 rounded-[2rem] text-white font-bold outline-none focus:border-red-600 transition-all" onChange={e=>setLeaveDates({...leaveDates, start:e.target.value})} /></div>
-                  <div className="space-y-2"><label className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em] ml-2">End</label><input type="date" className="w-full p-5 bg-black border border-white/10 rounded-[2rem] text-white font-bold outline-none focus:border-red-600 transition-all" onChange={e=>setLeaveDates({...leaveDates, end:e.target.value})} /></div>
-                </div>
-                <button onClick={async () => {
-                   if (!leaveDates.start) return alert("يرجى تحديد التاريخ");
-                   let curr = new Date(leaveDates.start); const end = new Date(leaveDates.end || leaveDates.start);
-                   while (curr <= end) {
-                     await addDoc(collection(db, "factory_logs"), { 
-                       workerId: currentLabor.id, name: currentLabor.name, dept: currentLabor.dept || "إدارة", shift: currentLabor.shift || "عام", 
-                       type: 'leave', leaveType: leaveDates.type, date: curr.toISOString().split('T')[0], status: 'pending', createdAt: serverTimestamp() 
-                     });
-                     curr.setDate(curr.getDate() + 1);
-                   }
-                   alert("تم إرسال الطلبات بنجاح"); setActiveTab('dashboard');
-                }} className="w-full bg-white text-black py-7 rounded-[2.5rem] font-black text-2xl hover:bg-red-600 hover:text-white transition-all shadow-2xl uppercase tracking-tighter">Submit Application</button>
               </div>
             </div>
           </div>
@@ -301,6 +419,83 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === 'contacts' && (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            <div className="bg-[#0f0f0f] p-6 rounded-[2rem] border border-white/5 space-y-6">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                  <h3 className="font-black italic text-2xl text-white uppercase tracking-tighter">دليل هواتف المصنع</h3>
+                  <p className="text-gray-500 text-[10px] uppercase font-black tracking-widest">اضغط على أي رقم للاتصال المباشر بالزميل</p>
+                </div>
+                <div className="bg-red-600/10 text-red-500 border border-red-500/10 px-4 py-2 rounded-xl text-xs font-bold">
+                  {filteredContacts.length} جهة اتصال معروضة
+                </div>
+              </div>
+
+              {/* أزرار الفلترة بحسب الأقسام المطلوبة */}
+              <div className="flex flex-wrap gap-2 border-b border-white/5 pb-4">
+                {[
+                  { id: "all", label: "الكل" },
+                  { id: "bronze", label: "قسم البرونز (Bronze)" },
+                  { id: "drawing", label: "قسم السحب (Drawing)" },
+                  { id: "engineers", label: "المهندسين (Engineers)" },
+                  { id: "others", label: "أخرى" }
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setSelectedSection(tab.id)}
+                    className={`px-4 py-2 rounded-xl font-bold text-xs transition-all ${
+                      selectedSection === tab.id 
+                        ? 'bg-red-600 text-white shadow-lg shadow-red-600/20' 
+                        : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <input 
+                type="text" 
+                placeholder="🔍 ابحث بالاسم أو المسمى الوظيفي المعرب..." 
+                value={searchContact}
+                onChange={e=>setSearchContact(e.target.value)}
+                className="w-full p-4 bg-black border border-white/10 rounded-2xl text-white text-right outline-none focus:border-red-600 font-bold transition-all placeholder:text-gray-600"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredContacts.map((c, idx) => (
+                <div key={idx} className="bg-[#0f0f0f] p-6 rounded-[2rem] border border-white/5 flex flex-col justify-between hover:border-red-600/40 transition-all duration-300 relative group overflow-hidden" dir="rtl">
+                  <div className="absolute top-0 right-0 w-1.5 h-full bg-red-600 opacity-60"></div>
+                  <div className="mb-6 pr-4">
+                    <h4 className="font-black text-white text-xl tracking-tight group-hover:text-red-500 transition-colors">{c.name}</h4>
+                    <span className="text-[10px] text-red-500 font-bold tracking-wider block mt-1">{c.role}</span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {c.phones.map((phone, pIdx) => (
+                      <a 
+                        key={pIdx}
+                        href={`tel:${phone}`} 
+                        className="flex justify-between items-center p-3 bg-white/5 hover:bg-red-600 hover:text-white rounded-xl border border-white/5 text-gray-300 transition-all duration-200 active:scale-95"
+                      >
+                        <span className="text-[10px] font-black uppercase tracking-widest">اتصال 📞</span>
+                        <span className="font-mono text-xs font-black tracking-widest">{phone}</span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {filteredContacts.length === 0 && (
+                <div className="col-span-full text-center py-20 opacity-30">
+                  <p className="font-black italic uppercase text-xs tracking-widest">لم يتم العثور على نتائج في هذا القسم</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {activeTab === 'admin_panel' && (
           <div className="space-y-12 max-w-6xl mx-auto py-10">
             {/* Range Export UI */}
@@ -320,7 +515,6 @@ export default function App() {
             <div className="bg-[#0f0f0f] p-12 rounded-[4rem] border border-white/5 shadow-3xl">
               <div className="flex justify-between items-center mb-12 border-b-2 border-white/5 pb-6">
                   <h3 className="text-2xl font-black italic text-red-600 uppercase tracking-[0.3em]">Clearance Queue</h3>
-                  <button onClick={fetchPending} className="bg-white/5 p-3 rounded-full hover:bg-red-600 transition-all">🔄</button>
               </div>
               <div className="space-y-5">
                 {pendingRequests.map(req => (
