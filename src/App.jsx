@@ -13,7 +13,7 @@ const getEgyptDate = () => {
   }).format(new Date());
 };
 
-// وظيفة تصدير الإكسيل (توفير عمود لنوع الإجازة)
+// وظيفة تصدير الإكسيل
 const exportToCSV = (data, fileName = "Factory_Report") => {
   const headers = ["الاسم,القسم,الوردية,النوع,التفاصيل,التاريخ,الحالة"];
   const rows = data.map(l => {
@@ -33,35 +33,34 @@ const CONTACTS_DATA = [
   { name: "Adel", role: "مشرف برونز", section: "bronze", phones: ["+201070929696", "+201009090868"] },
   { name: "Mohamed Ahmed", role: "مشرف برونز", section: "bronze", phones: ["+201115590891", "+201031150016"] },
   { name: "Mohamed Ragab", role: "مشرف برونز", section: "bronze", phones: ["+201022232588", "+201274047778"] },
-  { name: "Ahmed Fakhry", role: "Bronzing Line (Pay-off)", section: "bronze", phones: ["+201020052942"] },
-  { name: "Mahmoud El Barbary", role: "Bronzing Line (Pay-off)", section: "bronze", phones: ["+201050456443"] },
-  { name: "Abd El Razak", role: "Bronzing Line (Take-Up)", section: "bronze", phones: ["+201029053342"] },
-  { name: "Ahmed Ibrahim", role: "Bronzing Line (Take-Up)", section: "bronze", phones: ["+201028325090"] },
-  { name: "Ahmed Mahmoud", role: "Bronzing Line (Take-Up)", section: "bronze", phones: ["+201113909053", "+201050456448"] },
-  { name: "El Said Reda", role: "Bronzing Line (Take-Up)", section: "bronze", phones: ["+201019407133"] },
-  { name: "Ibrahim El Belihy", role: "Bronzing Line (Take-Up)", section: "bronze", phones: ["+201050214420"] },
-  { name: "Amen", role: "Bronzing Line (Tanks)", section: "bronze", phones: ["+201069163207"] },
-  { name: "Hossam Talat", role: "Bronzing Line (Tanks)", section: "bronze", phones: ["+201050456338"] },
-  { name: "Mohamed Saeed", role: "Bronzing Line (Tanks)", section: "bronze", phones: ["+201065825752"] },
+  { name: "Ahmed Fakhry", role: "مشغل بداية خط البرونز (Pay-off)", section: "bronze", phones: ["+201020052942"] },
+  { name: "Mahmoud El Barbary", role: "مشغل بداية خط البرونز (Pay-off)", section: "bronze", phones: ["+201050456443"] },
+  { name: "Abd El Razak", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201029053342"] },
+  { name: "Ahmed Ibrahim", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201028325090"] },
+  { name: "Ahmed Mahmoud", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201113909053", "+201050456448"] },
+  { name: "El Said Reda", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201019407133"] },
+  { name: "Ibrahim El Belihy", role: "مشغل نهاية خط البرونز (Take-Up)", section: "bronze", phones: ["+201050214420"] },
+  { name: "Amen", role: "مشغل حوض خط البرونز", section: "bronze", phones: ["+201069163207"] },
+  { name: "Hossam Talat", role: "مشغل حوض خط البرونز", section: "bronze", phones: ["+201050456338"] },
+  { name: "Mohamed Saeed", role: "مشغل حوض خط البرونز", section: "bronze", phones: ["+201065825752"] },
 
   // --- قسم السحب (Drawing) ---
-  { name: "Saeed", role: "Drawing Supervisor", section: "drawing", phones: ["+201022232570"] },
-  { name: "Ali Emmam", role: "Drawing Line", section: "drawing", phones: ["+201090544630"] },
-  { name: "Mohamed Abdallah", role: "Drawing Line", section: "drawing", phones: ["+201019440119"] },
-  { name: "Mahmoud Attia", role: "Drawing Supervisor", section: "drawing", phones: ["+201003270071"] },
-  { name: "Mohamed Nasr", role: "Drawing Line", section: "drawing", phones: ["+201000899480"] },
+  { name: "Ali Emmam", role: "مشغل خط السحب", section: "drawing", phones: ["+201090544630"] },
+  { name: "Mohamed Abdallah", role: "مشغل خط السحب", section: "drawing", phones: ["+201019440119"] },
+  { name: "Mohamed Nasr", role: "مشغل خط السحب", section: "drawing", phones: ["+201000899480"] },
+  { name: "Mahmoud Attia", role: "مشرف قسم السحب", section: "drawing", phones: ["+201003270071"] },
+  { name: "Saeed", role: "مشرف قسم السحب", section: "drawing", phones: ["+201022232570"] },
 
   // --- قسم المهندسين (Engineers) ---
-  { name: "ENG. Mostafa Abu Bakr", role: "مدير الإنتاج", section: "engineers", phones: ["+201002581174"] },
-  { name: "Mr. Amol", role: "مستشار فني", section: "engineers", phones: ["+201029728153"] }
-  { name: "ENG. Bahaa El Sayed", role: "مهندس إنتاج", section: "engineers", phones: ["+201006656483"] },
-  { name: "ENG. Anas Mostafa", role: "مهندس إنتاج", section: "engineers", phones: ["+201060079724"] },
-  { name: "ENG. Mohamed Hesham", role: "مهندس إنتاج", section: "engineers", phones: ["+201278731692", "+201023010020"] },
+  { name: "ENG. Mahmoud Heikel", role: "مهندس كهرباء", section: "engineers", phones: ["+201003687051"] },
   { name: "ENG. Islam Yousef", role: "مهندس ميكانيكا", section: "engineers", phones: ["+201017003989"] },
   { name: "ENG. Mohamed Ibrahim", role: "مهندس ميكانيكا", section: "engineers", phones: ["+201069801727"] },
-  { name: "ENG. Mahmoud Heikel", role: "مهندس كهرباء", section: "engineers", phones: ["+201003687051"] },
-  { name: "ENG. Mohamed Khaled", role: "رئيس قسم الجودة", section: "engineers", phones: ["+201006131360"] },
+  { name: "ENG. Anas Mostafa", role: "مهندس إنتاج", section: "engineers", phones: ["+201060079724"] },
+  { name: "ENG. Bahaa El Sayed", role: "مهندس إنتاج", section: "engineers", phones: ["+201006656483"] },
+  { name: "ENG. Mohamed Hesham", role: "مهندس إنتاج", section: "engineers", phones: ["+201278731692", "+201023010020"] },
+  { name: "ENG. Mostafa Abu Bakr", role: "مدير الإنتاج", section: "engineers", phones: ["+201002581174"] },
   { name: "ENG. Tarek Saeed", role: "مهندس جودة", section: "engineers", phones: ["+201022537327"] },
+  { name: "ENG. Mohamed Khaled", role: "رئيس قسم الجودة", section: "engineers", phones: ["+201006131360"] },
 
   // --- قسم الإدارة والخدمات واللوجستيات الأخرى ---
   { name: "Ashraf Abdelhalim", role: "مسؤول الموارد البشرية (HR)", section: "others", phones: ["+201002144125"] },
@@ -69,6 +68,7 @@ const CONTACTS_DATA = [
   { name: "Adel Abdallah", role: "مسؤول الأمن", section: "others", phones: ["+201025738113"] },
   { name: "Islam Gamal", role: "أمين المخزن", section: "others", phones: ["+201096773561"] },
   { name: "Hassan Mohamed", role: "مسؤول البوفيه", section: "others", phones: ["+201050226628"] },
+  { name: "Mr. Amol", role: "مستشار فني", section: "others", phones: ["+201029728153"] }
 ];
 
 export default function App() {
@@ -406,8 +406,8 @@ export default function App() {
                     <button onClick={async () => {
                       const q = query(collection(db, "factory_logs"), where("workerId", "==", currentLabor.id), where("date", "==", getEgyptDate()), where("type", "==", "attendance"));
                       const snap = await getDocs(q);
-                      for (const document of snap.docs) {
-                        await deleteDoc(document.ref);
+                      for (const docRef of snap.docs) {
+                        await deleteDoc(docRef.ref);
                       }
                       // تحديث محلي فوري للكروت السنوية لحفظ القراءات
                       setYearlyLaborLogs(prev => prev.filter(l => !(l.date === getEgyptDate() && l.type === 'attendance')));
