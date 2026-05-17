@@ -53,7 +53,6 @@ const CONTACTS_DATA = [
 
   // --- قسم المهندسين (Engineers) ---
   { name: "ENG. Mostafa Abu Bakr", role: "مدير الإنتاج", section: "engineers", phones: ["+201002581174"] },
-  { name: "Mr. Amol", role: "مستشار فني", section: "engineers", phones: ["+201029728153"] },
   { name: "ENG. Bahaa El Sayed", role: "مهندس إنتاج", section: "engineers", phones: ["+201006656483"] },
   { name: "ENG. Anas Mostafa", role: "مهندس إنتاج", section: "engineers", phones: ["+201060079724"] },
   { name: "ENG. Mohamed Hesham", role: "مهندس إنتاج", section: "engineers", phones: ["+201278731692", "+201023010020"] },
