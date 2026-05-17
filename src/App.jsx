@@ -84,7 +84,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [queueLoading, setQueueLoading] = useState(false);
   
-  // تجميعة بيانات الموظف السنوية لتقليل القراءات وتحسين الحسابات الكروت
+  // تجميعة بيانات الموظف السنوية لتقليل القراءات وحسين الكروت
   const [yearlyLaborLogs, setYearlyLaborLogs] = useState([]);
 
   // فلاتر التقارير
@@ -116,7 +116,7 @@ export default function App() {
     return () => unsubWorkers();
   }, []);
 
-  // 2. جلب سجلات اليوم المختار فقط للرقابة (حماية لاستهلاك القراءات اليومية)
+  // 2. جلب سجلات اليوم المختار فقط للرقابة الحية
   useEffect(() => {
     if (!userRole) return; 
     setLoading(true);
@@ -128,29 +128,23 @@ export default function App() {
     return () => unsubLogs();
   }, [selectedDate, userRole]);
 
-  // 3. جلب سجلات العام بالكامل للموظف الحالي مرة واحدة فقط عند الدخول لحساب كروته محلياً
-  useEffect(() => {
-    if (!currentLabor?.id) return;
-    
-    const fetchYearlyLogs = async () => {
-      try {
-        const q = query(
-          collection(db, "factory_logs"), 
-          where("workerId", "==", currentLabor.id),
-          where("date", ">=", "2026-01-01"),
-          where("date", "<=", "2026-12-31")
-        );
-        const snap = await getDocs(q);
-        setYearlyLaborLogs(snap.docs.map(d => d.data()));
-      } catch (e) {
-        console.error("Error fetching statistics:", e);
-      }
-    };
-    
-    fetchYearlyLogs();
-  }, [currentLabor, activeTab]); // إعادة الفحص برمجياً لضمان الدقة وتفادي الـ Sync اللحظي المستمر
+  // 3. دالة منفصلة لجلب كامل سجلات العام للموظف دفعة واحدة (تُستدعى فور تسجيل الدخول الناجح)
+  const fetchYearlyLogsForWorker = async (workerId) => {
+    try {
+      const q = query(
+        collection(db, "factory_logs"), 
+        where("workerId", "==", workerId),
+        where("date", ">=", "2026-01-01"),
+        where("date", "<=", "2026-12-31")
+      );
+      const snap = await getDocs(q);
+      setYearlyLaborLogs(snap.docs.map(d => d.data()));
+    } catch (e) {
+      console.error("Error fetching yearly statistics:", e);
+    }
+  };
 
-  // 4. دالة يدوية لجلب وتحديث قائمة الانتظار (Clearance Queue) برمجياً دون الحاجة لمراقب مستمر
+  // 4. دالة يدوية لجلب وتحديث قائمة الانتظار (Clearance Queue) عند طلب المسؤول
   const fetchPendingQueue = async () => {
     if (!userRole || userRole === 'Technician') return;
     setQueueLoading(true);
@@ -165,44 +159,40 @@ export default function App() {
     }
   };
 
-  // جلب القائمة لأول مرة تلقائياً عند فتح تاب الإدارة فقط
+  // جلب القائمة تلقائياً فقط عند فتح تاب الإدارة لأول مرة
   useEffect(() => {
     if (activeTab === 'admin_panel') {
       fetchPendingQueue();
     }
   }, [activeTab]);
 
-  // --- حساب إحصائيات الموظف محلياً على مدار السنة بالكامل من 1-1-2026 إلى نهاية السنة (0 قراءات إضافية) ---
+  // --- حساب إحصائيات الموظف محلياً على مدار السنة بالكامل من 1-1-2026 إلى نهاية السنة (0 قراءات مكررة) ---
   const laborStats = useMemo(() => {
-    if (!currentLabor || yearlyLaborLogs.length === 0) {
-      return { attendance: 0, annual: 0, sick: 0, casual: 0, rest: 0, absent: 0 };
-    }
+    const stats = { attendance: 0, annual: 0, sick: 0, casual: 0, rest: 0, absent: 0 };
+    if (!currentLabor || yearlyLaborLogs.length === 0) return stats;
     
-    const attendanceCount = yearlyLaborLogs.filter(l => l.type === 'attendance').length;
-    const annualCount = yearlyLaborLogs.filter(l => l.type === 'leave' && l.leaveType === 'سنوية' && l.status === 'approved').length;
-    const sickCount = yearlyLaborLogs.filter(l => l.type === 'leave' && l.leaveType === 'مرضي' && l.status === 'approved').length;
-    const casualCount = yearlyLaborLogs.filter(l => l.type === 'leave' && l.leaveType === 'عارضة' && l.status === 'approved').length;
-    const restCount = yearlyLaborLogs.filter(l => l.type === 'leave' && l.leaveType === 'بدل' && l.status === 'approved').length;
-    const absentCount = yearlyLaborLogs.filter(l => l.type === 'absence' || (l.status === 'confirmed' && l.type === 'absence')).length;
+    yearlyLaborLogs.forEach(l => {
+      if (l.type === 'attendance') {
+        stats.attendance += 1;
+      } else if (l.type === 'leave' && l.status === 'approved') {
+        if (l.leaveType === 'سنوية') stats.annual += 1;
+        if (l.leaveType === 'مرضي') stats.sick += 1;
+        if (l.leaveType === 'عارضة') stats.casual += 1;
+        if (l.leaveType === 'بدل') stats.rest += 1;
+      } else if (l.type === 'absence' || (l.status === 'confirmed' && l.type === 'absence')) {
+        stats.absent += 1;
+      }
+    });
 
-    return {
-      attendance: attendanceCount,
-      annual: annualCount,
-      sick: sickCount,
-      casual: casualCount,
-      rest: restCount,
-      absent: absentCount
-    };
+    return stats;
   }, [yearlyLaborLogs, currentLabor]);
 
   // تصفية أرقام الهواتف بناء على القسم وكلمة البحث
   const filteredContacts = useMemo(() => {
     let list = CONTACTS_DATA;
-    
     if (selectedSection !== "all") {
       list = list.filter(c => c.section === selectedSection);
     }
-
     const queryStr = searchContact.toLowerCase().trim();
     if (queryStr) {
       list = list.filter(c => 
@@ -210,7 +200,6 @@ export default function App() {
         c.role.toLowerCase().includes(queryStr)
       );
     }
-    
     return list;
   }, [searchContact, selectedSection]);
 
@@ -252,8 +241,15 @@ export default function App() {
     try {
       const snap = await getDoc(doc(db, type === 'admin' ? "admins" : "workers", id));
       if (snap.exists()) {
-        setUserRole(snap.data().role || (type === 'admin' ? 'Admin' : 'Technician'));
+        const role = snap.data().role || (type === 'admin' ? 'Admin' : 'Technician');
+        setUserRole(role);
         setCurrentLabor({ id: snap.id, ...snap.data() });
+        
+        // جلب البيانات السنوية فوراً للموظف لضمان عمل الكروت منذ أول ثانية دخول
+        if (type !== 'admin') {
+          await fetchYearlyLogsForWorker(snap.id);
+        }
+
         setActiveTab(type === 'admin' ? 'dashboard' : 'request');
       } else {
         alert("البيانات غير صحيحة");
@@ -366,7 +362,7 @@ export default function App() {
 
         {activeTab === 'request' && (
           <div className="space-y-12">
-            {/* الداشبورد الإحصائي السنوي للموظف (محسوب محلياً من 1-1-2026 حتي نهاية السنة) */}
+            {/* الداشبورد الإحصائي السنوي للموظف */}
             <div className="bg-[#0f0f0f] p-8 rounded-[3rem] border border-white/5 shadow-2xl animate-in fade-in duration-300">
               <div className="flex justify-between items-center mb-6 border-r-4 border-red-600 pr-4">
                 <h3 className="text-2xl font-black text-white italic leading-none uppercase">الرصيد الإحصائي السنوي لعام 2026</h3>
@@ -410,8 +406,10 @@ export default function App() {
                     <button onClick={async () => {
                       const q = query(collection(db, "factory_logs"), where("workerId", "==", currentLabor.id), where("date", "==", getEgyptDate()), where("type", "==", "attendance"));
                       const snap = await getDocs(q);
-                      snap.forEach(async (doc) => await deleteDoc(doc.ref));
-                      // تحديث الـ state المحلي فوراً لتقليل سحب القراءات
+                      for (const document of snap.docs) {
+                        await deleteDoc(document.ref);
+                      }
+                      // تحديث محلي فوري للكروت السنوية لحفظ القراءات
                       setYearlyLaborLogs(prev => prev.filter(l => !(l.date === getEgyptDate() && l.type === 'attendance')));
                       alert("تم مسح السجل اليومي");
                     }} className="text-red-600 font-black underline text-sm uppercase tracking-widest hover:text-black transition-all">Cancel Mistakes</button>
@@ -424,7 +422,8 @@ export default function App() {
                       type:'attendance', date:today, status:'confirmed'
                     };
                     await addDoc(collection(db,"factory_logs"),{ ...newLog, createdAt:serverTimestamp() });
-                    setYearlyLaborLogs(prev => [...prev, newLog]); // إضافة محلياً
+                    // تعويض جلب الـ DB بالتحديث المحلي السريع لتوفير الـ Reads
+                    setYearlyLaborLogs(prev => [...prev, newLog]); 
                     alert("Attendance Logged!"); setActiveTab('dashboard');
                   }} className="w-full bg-red-600 text-white py-24 rounded-[3.5rem] font-black text-8xl shadow-2xl shadow-red-600/40 active:scale-95 transition-all italic tracking-tighter hover:bg-red-700">PUNCH</button>
                 )}
@@ -461,7 +460,8 @@ export default function App() {
                        addedLogs.push(logItem);
                        curr.setDate(curr.getDate() + 1);
                      }
-                     setYearlyLaborLogs(prev => [...prev, ...addedLogs]); // تحديث الكروت محلياً فوراً
+                     // يتم إضافتها محلياً لتفادي جلب البيانات مجدداً
+                     setYearlyLaborLogs(prev => [...prev, ...addedLogs]); 
                      alert("تم إرسال الطلبات بنجاح"); setActiveTab('dashboard');
                   }} className="w-full bg-white text-black py-7 rounded-[2.5rem] font-black text-2xl hover:bg-red-600 hover:text-white transition-all shadow-2xl uppercase tracking-tighter">Submit Application</button>
                 </div>
@@ -590,7 +590,6 @@ export default function App() {
             <div className="bg-[#0f0f0f] p-12 rounded-[4rem] border border-white/5 shadow-3xl">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-12 border-b-2 border-white/5 pb-6">
                   <h3 className="text-2xl font-black italic text-red-600 uppercase tracking-[0.3em]">Clearance Queue</h3>
-                  {/* زر التحديث البرمجي اليدوي لتقليل استهلاك استعلامات الداتا بيز */}
                   <button 
                     onClick={fetchPendingQueue} 
                     disabled={queueLoading}
@@ -609,15 +608,13 @@ export default function App() {
                     <div className="flex gap-4 w-full md:w-auto">
                       <button onClick={async() => {
                           await updateDoc(doc(db,"factory_logs",req.id), {status:'approved'});
-                          // تحديث الحالة محلياً فوراً لمنع القراءات المكررة وإعادة الـ Fetch للواجهة
                           setPendingRequests(prev => prev.filter(i => i.id !== req.id));
                           alert("Approved");
                       }} className="flex-1 bg-green-600 px-10 py-4.5 rounded-[1.5rem] font-black text-[11px] uppercase shadow-lg shadow-green-600/10">Approve</button>
                       <button onClick={async() => {
                           await updateDoc(doc(db,"factory_logs",req.id), {status:'rejected'});
-                          // تحديث الحالة محلياً فوراً لمنع القراءات المكررة وإعادة الـ Fetch للواجهة
                           setPendingRequests(prev => prev.filter(i => i.id !== req.id));
-                          alert("Rejected");
+                          alert("Reject");
                       }} className="flex-1 bg-red-600 px-10 py-4.5 rounded-[1.5rem] font-black text-[11px] uppercase shadow-lg shadow-red-600/10">Reject</button>
                     </div>
                   </div>
