@@ -128,7 +128,7 @@ export default function App() {
   }, [selectedDate, userRole]);
 
   // 3. دالة منفصلة لجلب كامل سجلات العام للموظف دفعة واحدة (تُستدعى فور تسجيل الدخول الناجح)
-  const fetchYearlyLogsForWorker = async (workerId) => {
+  const fetchYearlyLogsForWorker = async (namw) => {
     try {
       const q = query(
         collection(db, "factory_logs"), 
