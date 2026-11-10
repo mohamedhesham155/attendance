@@ -83,7 +83,7 @@ const SHIFT_SUPERVISORS = {
   },
 };
 
-const DIE_WORKSHOP_SUPERVISOR = { name: 'عصام محمد ابراهيم حسن', workerId: '190' };
+const DIE_WORKSHOP_SUPERVISOR = 'عصام محمد ابراهيم حسن';
 
 export default function App() {
   const [userRole, setUserRole] = useState(null); 
@@ -351,14 +351,15 @@ export default function App() {
                   return (
                     <div key={dept} className="space-y-8">
                       <div className="flex items-center gap-4">
-                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">{`قسم ${dept}`}</h3>
+                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">
+                            {dept === 'ورشة الدايات' ? 'قسم Die Workshop' : `قسم ${dept}`}
+                          </h3>
                           <div className="h-[2px] flex-1 bg-gradient-to-l from-red-600/50 to-transparent"></div>
                       </div>
                       {dept === 'ورشة الدايات' ? (
                         <div className="bg-[#0f0f0f] rounded-[3rem] border border-white/5 p-6 shadow-2xl" dir="rtl">
                           <p className="text-[10px] font-black text-gray-500 mb-2">مشرف الورشة</p>
-                          <p className="font-bold text-sm text-white">{DIE_WORKSHOP_SUPERVISOR.name}</p>
-                          <p className="text-[10px] text-gray-500 mt-1">رقم العامل: {DIE_WORKSHOP_SUPERVISOR.workerId}</p>
+                          <p className="font-bold text-sm text-white">{DIE_WORKSHOP_SUPERVISOR}</p>
                         </div>
                       ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
