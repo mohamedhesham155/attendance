@@ -132,7 +132,7 @@ export default function App() {
     try {
       const q = query(
         collection(db, "factory_logs"), 
-        where("workerId", "==", workerId),
+        where("name", "==", name),
         where("date", ">=", "2026-01-01"),
         where("date", "<=", "2026-12-31")
       );
