@@ -51,6 +51,8 @@ const CONTACTS_DATA = [
   { name: "Mahmoud Attia", role: "Drawing Supervisor", section: "drawing", phones: ["+201003270071"] },
   { name: "Mohamed Nasr", role: "Drawing Line", section: "drawing", phones: ["+201000899480"] },
 
+  // --- ورشة الدايات (Die Workshop) --- أضف الأسماء هنا بالشكل: { name: "...", role: "...", section: "dieshop", phones: ["+20..."] }
+
   // --- قسم المهندسين (Engineers) ---
   { name: "ENG. Mostafa Abu Bakr", role: "مدير الإنتاج", section: "engineers", phones: ["+201002581174"] },
   { name: "ENG. Bahaa El Sayed", role: "مهندس إنتاج", section: "engineers", phones: ["+201006656483"] },
@@ -128,16 +130,16 @@ export default function App() {
   }, [selectedDate, userRole]);
 
   // 3. دالة منفصلة لجلب كامل سجلات العام للموظف دفعة واحدة (تُستدعى فور تسجيل الدخول الناجح)
-  const fetchYearlyLogsForWorker = async (namw) => {
+  const fetchYearlyLogsForWorker = async (workerId) => {
     try {
-      const q = query(
-        collection(db, "factory_logs"), 
-        where("name", "==", name),
-        where("date", ">=", "2026-01-01"),
-        where("date", "<=", "2026-12-31")
-      );
+      // استعلام بحقل واحد فقط (لا يحتاج Composite Index) ثم الفلترة بالتاريخ محلياً
+      const q = query(collection(db, "factory_logs"), where("workerId", "==", workerId));
       const snap = await getDocs(q);
-      setYearlyLaborLogs(snap.docs.map(d => d.data()));
+      setYearlyLaborLogs(
+        snap.docs
+          .map(d => d.data())
+          .filter(l => l.date >= "2026-01-01" && l.date <= "2026-12-31")
+      );
     } catch (e) {
       console.error("Error fetching yearly statistics:", e);
     }
@@ -170,9 +172,10 @@ export default function App() {
     const stats = { attendance: 0, annual: 0, sick: 0, casual: 0, rest: 0, absent: 0 };
     if (!currentLabor || yearlyLaborLogs.length === 0) return stats;
     
+    const attendanceDays = new Set();
     yearlyLaborLogs.forEach(l => {
       if (l.type === 'attendance') {
-        stats.attendance += 1;
+        if (!attendanceDays.has(l.date)) { attendanceDays.add(l.date); stats.attendance += 1; }
       } else if (l.type === 'leave' && l.status === 'approved') {
         if (l.leaveType === 'سنوية') stats.annual += 1;
         if (l.leaveType === 'مرضي') stats.sick += 1;
@@ -185,6 +188,14 @@ export default function App() {
 
     return stats;
   }, [yearlyLaborLogs, currentLabor]);
+
+  // الأقسام: برونز / سحب (3 ورديات A-B-C) / ورشة الدايات / إدارة + أي قسم جديد يظهر تلقائياً
+  const DIE_DEPT = 'ورشة الدايات';
+  const dashboardDepts = useMemo(() => {
+    const base = ['برونز', 'سحب', DIE_DEPT, 'إدارة'];
+    const extra = [...new Set(allWorkers.map(w => w.dept).filter(d => d && !base.includes(d)))];
+    return [...base, ...extra];
+  }, [allWorkers]);
 
   // تصفية أرقام الهواتف بناء على القسم وكلمة البحث
   const filteredContacts = useMemo(() => {
@@ -318,27 +329,37 @@ export default function App() {
             {loading ? (
                 <div className="text-center py-32 text-gray-800 font-black italic text-4xl tracking-widest animate-pulse uppercase">Syncing Factory...</div>
             ) : (
-                ['برونز', 'سحب', 'إدارة'].map(dept => (
+                dashboardDepts.map(dept => {
+                  const deptWorkers = allWorkers.filter(w => w.dept === dept || (!w.dept && dept === 'إدارة'));
+                  // السحب: دائماً 3 ورديات A/B/C — باقي الأقسام: الورديات الموجودة فعلياً
+                  const baseShifts = dept === 'سحب' ? ['A', 'B', 'C'] : ['A', 'B', 'C'].filter(sh => deptWorkers.some(w => w.shift === sh));
+                  const otherShifts = [...new Set(deptWorkers.map(w => w.shift || 'عام').filter(sh => !['A', 'B', 'C'].includes(sh)))];
+                  const shiftList = [...baseShifts, ...otherShifts];
+                  if (deptWorkers.length === 0 && dept !== 'سحب' && dept !== DIE_DEPT) return null;
+                  return (
                     <div key={dept} className="space-y-8">
                       <div className="flex items-center gap-4">
-                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">قسم {dept}</h3>
+                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">{dept === DIE_DEPT ? dept : `قسم ${dept}`}</h3>
                           <div className="h-[2px] flex-1 bg-gradient-to-l from-red-600/50 to-transparent"></div>
                       </div>
+                      {shiftList.length === 0 && (
+                        <p className="text-gray-700 font-black italic text-xs uppercase tracking-widest">لا يوجد عمال مسجلين في هذا القسم بعد</p>
+                      )}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {['A', 'B', 'C'].map(shift => {
-                          const workers = allWorkers.filter(w => (w.dept === dept || (!w.dept && dept === 'إدارة')) && w.shift === shift);
-                          if (workers.length === 0) return null;
+                        {shiftList.map(shift => {
+                          const workers = deptWorkers.filter(w => (w.shift || 'عام') === shift);
                           const presentCount = workers.filter(w => getStatus(w.id).isPresent).length;
                           
                           return (
                             <div key={shift} className="bg-[#0f0f0f] rounded-[3rem] border border-white/5 overflow-hidden shadow-2xl hover:border-red-600/20 transition-all duration-500">
                               <div className="bg-white/[0.02] p-5 flex justify-between items-center border-b border-white/5">
-                                <span className="font-black text-[11px] italic text-gray-500 uppercase tracking-[0.2em]">Shift {shift}</span>
+                                <span className="font-black text-[11px] italic text-gray-500 uppercase tracking-[0.2em]">{['A','B','C'].includes(shift) ? `Shift ${shift}` : `وردية ${shift}`}</span>
                                 <div className="bg-red-600/10 text-red-600 border border-red-600/20 px-5 py-1.5 rounded-full text-[11px] font-black italic">
                                    {presentCount} / {workers.length} Present
                                 </div>
                               </div>
                               <div className="p-6 space-y-3.5">
+                                {workers.length === 0 && <p className="text-center text-gray-700 text-[11px] font-black italic py-4">لا يوجد عمال في هذه الوردية</p>}
                                 {workers.map(w => {
                                   const status = getStatus(w.id);
                                   return (
@@ -354,7 +375,8 @@ export default function App() {
                         })}
                       </div>
                     </div>
-                  ))
+                  );
+                })
             )}
           </div>
         )}
@@ -512,6 +534,7 @@ export default function App() {
                   { id: "all", label: "الكل" },
                   { id: "bronze", label: "قسم البرونز (Bronze)" },
                   { id: "drawing", label: "قسم السحب (Drawing)" },
+                  { id: "dieshop", label: "ورشة الدايات (Die Workshop)" },
                   { id: "engineers", label: "المهندسين (Engineers)" },
                   { id: "others", label: "أخرى" }
                 ].map(tab => (
