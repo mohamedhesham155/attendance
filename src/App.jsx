@@ -51,8 +51,6 @@ const CONTACTS_DATA = [
   { name: "Mahmoud Attia", role: "Drawing Supervisor", section: "drawing", phones: ["+201003270071"] },
   { name: "Mohamed Nasr", role: "Drawing Line", section: "drawing", phones: ["+201000899480"] },
 
-  // --- ورشة الدايات (Die Workshop) --- أضف الأسماء هنا بالشكل: { name: "...", role: "...", section: "dieshop", phones: ["+20..."] }
-
   // --- قسم المهندسين (Engineers) ---
   { name: "ENG. Mostafa Abu Bakr", role: "مدير الإنتاج", section: "engineers", phones: ["+201002581174"] },
   { name: "ENG. Bahaa El Sayed", role: "مهندس إنتاج", section: "engineers", phones: ["+201006656483"] },
@@ -189,11 +187,10 @@ export default function App() {
     return stats;
   }, [yearlyLaborLogs, currentLabor]);
 
-  // الأقسام: برونز / سحب (3 ورديات A-B-C) / ورشة الدايات / إدارة + أي قسم جديد يظهر تلقائياً
-  const DIE_DEPT = 'ورشة الدايات';
+  // الأقسام: برونز / سحب (3 ورديات A-B-C) / إدارة + أي قسم جديد يظهر تلقائياً
   const dashboardDepts = useMemo(() => {
-    const base = ['برونز', 'سحب', DIE_DEPT, 'إدارة'];
-    const extra = [...new Set(allWorkers.map(w => w.dept).filter(d => d && !base.includes(d)))];
+    const base = ['برونز', 'سحب', 'إدارة'];
+    const extra = [...new Set(allWorkers.map(w => w.dept).filter(d => d && !base.includes(d) && d !== 'ورشة الدايات'))];
     return [...base, ...extra];
   }, [allWorkers]);
 
@@ -335,16 +332,13 @@ export default function App() {
                   const baseShifts = dept === 'سحب' ? ['A', 'B', 'C'] : ['A', 'B', 'C'].filter(sh => deptWorkers.some(w => w.shift === sh));
                   const otherShifts = [...new Set(deptWorkers.map(w => w.shift || 'عام').filter(sh => !['A', 'B', 'C'].includes(sh)))];
                   const shiftList = [...baseShifts, ...otherShifts];
-                  if (deptWorkers.length === 0 && dept !== 'سحب' && dept !== DIE_DEPT) return null;
+                  if (deptWorkers.length === 0 && dept !== 'سحب') return null;
                   return (
                     <div key={dept} className="space-y-8">
                       <div className="flex items-center gap-4">
-                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">{dept === DIE_DEPT ? dept : `قسم ${dept}`}</h3>
+                          <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">{`قسم ${dept}`}</h3>
                           <div className="h-[2px] flex-1 bg-gradient-to-l from-red-600/50 to-transparent"></div>
                       </div>
-                      {shiftList.length === 0 && (
-                        <p className="text-gray-700 font-black italic text-xs uppercase tracking-widest">لا يوجد عمال مسجلين في هذا القسم بعد</p>
-                      )}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {shiftList.map(shift => {
                           const workers = deptWorkers.filter(w => (w.shift || 'عام') === shift);
@@ -534,7 +528,6 @@ export default function App() {
                   { id: "all", label: "الكل" },
                   { id: "bronze", label: "قسم البرونز (Bronze)" },
                   { id: "drawing", label: "قسم السحب (Drawing)" },
-                  { id: "dieshop", label: "ورشة الدايات (Die Workshop)" },
                   { id: "engineers", label: "المهندسين (Engineers)" },
                   { id: "others", label: "أخرى" }
                 ].map(tab => (
