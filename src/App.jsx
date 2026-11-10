@@ -70,6 +70,21 @@ const CONTACTS_DATA = [
   { name: "Hassan Mohamed", role: "مسؤول البوفيه", section: "others", phones: ["+201050226628"] },
 ];
 
+const SHIFT_SUPERVISORS = {
+  'برونز': {
+    A: 'محمد احمد محمود علي',
+    B: 'ابراهيم احمد الشحات البليهي',
+    C: 'عادل ابراهيم احمد احمد رزق',
+  },
+  'سحب': {
+    A: 'علي عبد الستار إمام محمد',
+    B: 'محمود عطية السيد سالم',
+    C: 'محمد نصر عطية السيد',
+  },
+};
+
+const DIE_WORKSHOP_SUPERVISOR = { name: 'عصام محمد ابراهيم حسن', workerId: '190' };
+
 export default function App() {
   const [userRole, setUserRole] = useState(null); 
   const [currentLabor, setCurrentLabor] = useState(null);
@@ -187,10 +202,10 @@ export default function App() {
     return stats;
   }, [yearlyLaborLogs, currentLabor]);
 
-  // الأقسام: برونز / سحب (3 ورديات A-B-C) / إدارة + أي قسم جديد يظهر تلقائياً
+  // الأقسام: برونز / سحب (3 ورديات A-B-C) / ورشة الدايات / إدارة + أي قسم جديد يظهر تلقائياً
   const dashboardDepts = useMemo(() => {
-    const base = ['برونز', 'سحب', 'إدارة'];
-    const extra = [...new Set(allWorkers.map(w => w.dept).filter(d => d && !base.includes(d) && d !== 'ورشة الدايات'))];
+    const base = ['برونز', 'سحب', 'ورشة الدايات', 'إدارة'];
+    const extra = [...new Set(allWorkers.map(w => w.dept).filter(d => d && !base.includes(d)))];
     return [...base, ...extra];
   }, [allWorkers]);
 
@@ -328,17 +343,24 @@ export default function App() {
             ) : (
                 dashboardDepts.map(dept => {
                   const deptWorkers = allWorkers.filter(w => w.dept === dept || (!w.dept && dept === 'إدارة'));
-                  // السحب: دائماً 3 ورديات A/B/C — باقي الأقسام: الورديات الموجودة فعلياً
-                  const baseShifts = dept === 'سحب' ? ['A', 'B', 'C'] : ['A', 'B', 'C'].filter(sh => deptWorkers.some(w => w.shift === sh));
+                  // البرونز والسحب: دائماً 3 ورديات A/B/C — باقي الأقسام: الورديات الموجودة فعلياً
+                  const baseShifts = ['برونز', 'سحب'].includes(dept) ? ['A', 'B', 'C'] : ['A', 'B', 'C'].filter(sh => deptWorkers.some(w => w.shift === sh));
                   const otherShifts = [...new Set(deptWorkers.map(w => w.shift || 'عام').filter(sh => !['A', 'B', 'C'].includes(sh)))];
                   const shiftList = [...baseShifts, ...otherShifts];
-                  if (deptWorkers.length === 0 && dept !== 'سحب') return null;
+                  if (deptWorkers.length === 0 && !['برونز', 'سحب', 'ورشة الدايات'].includes(dept)) return null;
                   return (
                     <div key={dept} className="space-y-8">
                       <div className="flex items-center gap-4">
                           <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white">{`قسم ${dept}`}</h3>
                           <div className="h-[2px] flex-1 bg-gradient-to-l from-red-600/50 to-transparent"></div>
                       </div>
+                      {dept === 'ورشة الدايات' ? (
+                        <div className="bg-[#0f0f0f] rounded-[3rem] border border-white/5 p-6 shadow-2xl" dir="rtl">
+                          <p className="text-[10px] font-black text-gray-500 mb-2">مشرف الورشة</p>
+                          <p className="font-bold text-sm text-white">{DIE_WORKSHOP_SUPERVISOR.name}</p>
+                          <p className="text-[10px] text-gray-500 mt-1">رقم العامل: {DIE_WORKSHOP_SUPERVISOR.workerId}</p>
+                        </div>
+                      ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {shiftList.map(shift => {
                           const workers = deptWorkers.filter(w => (w.shift || 'عام') === shift);
@@ -353,6 +375,12 @@ export default function App() {
                                 </div>
                               </div>
                               <div className="p-6 space-y-3.5">
+                                {SHIFT_SUPERVISORS[dept]?.[shift] && (
+                                  <div className="pb-3 border-b border-white/5" dir="rtl">
+                                    <p className="text-[10px] font-black text-gray-500 mb-1">مشرف الوردية</p>
+                                    <p className="font-bold text-xs text-white">{SHIFT_SUPERVISORS[dept][shift]}</p>
+                                  </div>
+                                )}
                                 {workers.length === 0 && <p className="text-center text-gray-700 text-[11px] font-black italic py-4">لا يوجد عمال في هذه الوردية</p>}
                                 {workers.map(w => {
                                   const status = getStatus(w.id);
@@ -368,6 +396,7 @@ export default function App() {
                           );
                         })}
                       </div>
+                      )}
                     </div>
                   );
                 })
