@@ -72,14 +72,14 @@ const CONTACTS_DATA = [
 
 const SHIFT_SUPERVISORS = {
   'برونز': {
-    A: 'محمد احمد محمود علي',
-    B: 'ابراهيم احمد الشحات البليهي',
-    C: 'عادل ابراهيم احمد احمد رزق',
+    A: { id: '372MA', name: 'محمد احمد محمود علي' },
+    B: { id: '590IB', name: 'ابراهيم احمد الشحات البليهي' },
+    C: { id: '308AD', name: 'عادل ابراهيم احمد احمد رزق' },
   },
   'سحب': {
-    A: 'علي عبد الستار إمام محمد',
-    B: 'محمود عطية السيد سالم',
-    C: 'محمد نصر عطية السيد',
+    A: { id: '510AA', name: 'علي عبد الستار إمام محمد' },
+    B: { id: '243MA', name: 'محمود عطية السيد سالم' },
+    C: { id: '438MN', name: 'محمد نصر عطية السيد' },
   },
 };
 
@@ -91,6 +91,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [allData, setAllData] = useState([]); 
   const [allWorkers, setAllWorkers] = useState([]);
+  const [supervisorRecords, setSupervisorRecords] = useState({});
+  const [supervisorLoadError, setSupervisorLoadError] = useState("");
   const [pendingRequests, setPendingRequests] = useState([]);
   const [selectedDate, setSelectedDate] = useState(getEgyptDate());
   const [laborId, setLaborId] = useState("");
@@ -128,6 +130,31 @@ export default function App() {
       setAllWorkers(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
     return () => unsubWorkers();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const supervisors = Object.values(SHIFT_SUPERVISORS).flatMap(Object.values);
+
+    Promise.all(supervisors.map(async (supervisor) => {
+      const snap = await getDoc(doc(db, "admins", supervisor.id));
+      if (!snap.exists()) {
+        throw new Error(`Supervisor record not found in admins: ${supervisor.id}`);
+      }
+      return [supervisor.id, { id: snap.id, ...snap.data() }];
+    }))
+      .then(records => {
+        if (active) {
+          setSupervisorRecords(Object.fromEntries(records));
+          setSupervisorLoadError("");
+        }
+      })
+      .catch(error => {
+        console.error("Error fetching shift supervisors:", error);
+        if (active) setSupervisorLoadError("تعذر تحميل بيانات مشرفي الورديات من قاعدة البيانات");
+      });
+
+    return () => { active = false; };
   }, []);
 
   // 2. جلب سجلات اليوم المختار فقط للرقابة الحية
@@ -356,6 +383,9 @@ export default function App() {
                           </h3>
                           <div className="h-[2px] flex-1 bg-gradient-to-l from-red-600/50 to-transparent"></div>
                       </div>
+                      {supervisorLoadError && ['برونز', 'سحب'].includes(dept) && (
+                        <p className="text-sm font-bold text-red-500" role="alert">{supervisorLoadError}</p>
+                      )}
                       {dept === 'ورشة الدايات' && (
                         <div className="bg-[#0f0f0f] rounded-[3rem] border border-white/5 p-6 shadow-2xl" dir="rtl">
                           <p className="text-[10px] font-black text-gray-500 mb-2">مشرف الورشة</p>
@@ -366,6 +396,12 @@ export default function App() {
                         {shiftList.map(shift => {
                           const workers = deptWorkers
                             .filter(w => (w.shift || 'عام') === shift)
+                            .map(w => ({ id: w.id, name: w.name, isSupervisor: false }))
+                            .concat(SHIFT_SUPERVISORS[dept]?.[shift] ? [{
+                              id: SHIFT_SUPERVISORS[dept][shift].id,
+                              name: supervisorRecords[SHIFT_SUPERVISORS[dept][shift].id]?.name || SHIFT_SUPERVISORS[dept][shift].name,
+                              isSupervisor: true,
+                            }] : [])
                             .sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' }));
                           const presentCount = workers.filter(w => getStatus(w.id).isPresent).length;
                           
@@ -378,18 +414,15 @@ export default function App() {
                                 </div>
                               </div>
                               <div className="p-6 space-y-3.5">
-                                {SHIFT_SUPERVISORS[dept]?.[shift] && (
-                                  <div className="pb-3 border-b border-white/5" dir="rtl">
-                                    <p className="text-[10px] font-black text-gray-500 mb-1">مشرف الوردية</p>
-                                    <p className="font-bold text-xs text-white">{SHIFT_SUPERVISORS[dept][shift]}</p>
-                                  </div>
-                                )}
                                 {workers.length === 0 && <p className="text-center text-gray-700 text-[11px] font-black italic py-4">لا يوجد عمال في هذه الوردية</p>}
                                 {workers.map(w => {
                                   const status = getStatus(w.id);
                                   return (
                                     <div key={w.id} className={`flex justify-between items-center p-4 rounded-2xl border transition-all duration-300 ${status.color}`}>
-                                      <span className="font-bold text-[12px] text-white truncate max-w-[170px]">{w.name}</span>
+                                      <span className="font-bold text-[12px] text-white truncate max-w-[170px]">
+                                        {w.isSupervisor && <span className="text-gray-500 text-[10px] ml-2">مشرف</span>}
+                                        {w.name}
+                                      </span>
                                       <span className="text-[10px] font-black uppercase italic tracking-tighter opacity-80">{status.label}</span>
                                     </div>
                                   );
