@@ -356,15 +356,17 @@ export default function App() {
                           </h3>
                           <div className="h-[2px] flex-1 bg-gradient-to-l from-red-600/50 to-transparent"></div>
                       </div>
-                      {dept === 'ورشة الدايات' ? (
+                      {dept === 'ورشة الدايات' && (
                         <div className="bg-[#0f0f0f] rounded-[3rem] border border-white/5 p-6 shadow-2xl" dir="rtl">
                           <p className="text-[10px] font-black text-gray-500 mb-2">مشرف الورشة</p>
                           <p className="font-bold text-sm text-white">{DIE_WORKSHOP_SUPERVISOR}</p>
                         </div>
-                      ) : (
+                      )}
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                         {shiftList.map(shift => {
-                          const workers = deptWorkers.filter(w => (w.shift || 'عام') === shift);
+                          const workers = deptWorkers
+                            .filter(w => (w.shift || 'عام') === shift)
+                            .sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' }));
                           const presentCount = workers.filter(w => getStatus(w.id).isPresent).length;
                           
                           return (
@@ -397,7 +399,6 @@ export default function App() {
                           );
                         })}
                       </div>
-                      )}
                     </div>
                   );
                 })
