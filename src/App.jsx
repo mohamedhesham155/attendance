@@ -83,15 +83,10 @@ const SHIFT_SUPERVISORS = {
   },
 };
 
-const SHIFT_SUPERVISOR_IDS = new Set(
-  Object.values(SHIFT_SUPERVISORS).flatMap(supervisors => Object.values(supervisors).map(supervisor => supervisor.id))
-);
-
 const DIE_WORKSHOP_SUPERVISOR = 'عصام محمد ابراهيم حسن';
 
 export default function App() {
   const [userRole, setUserRole] = useState(null); 
-  const [isSupervisorReadOnly, setIsSupervisorReadOnly] = useState(false);
   const [currentLabor, setCurrentLabor] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [allData, setAllData] = useState([]); 
@@ -121,7 +116,6 @@ export default function App() {
   // دالة تسجيل الخروج الفعالة لتصفير الحالات بالكامل
   const handleLogout = () => {
     setUserRole(null);
-    setIsSupervisorReadOnly(false);
     setCurrentLabor(null);
     setLaborId("");
     setPassInput("");
@@ -176,7 +170,7 @@ export default function App() {
   }, [selectedDate, userRole]);
 
   // 3. دالة منفصلة لجلب كامل سجلات العام للموظف دفعة واحدة (تُستدعى فور تسجيل الدخول الناجح)
-  const fetchYearlyLogsForWorker = async (workerId, required = false) => {
+  const fetchYearlyLogsForWorker = async (workerId) => {
     try {
       // استعلام بحقل واحد فقط (لا يحتاج Composite Index) ثم الفلترة بالتاريخ محلياً
       const q = query(collection(db, "factory_logs"), where("workerId", "==", workerId));
@@ -188,8 +182,6 @@ export default function App() {
       );
     } catch (e) {
       console.error("Error fetching yearly statistics:", e);
-      if (required) throw e;
-      alert("تعذر جلب الرصيد الإحصائي السنوي");
     }
   };
 
@@ -296,27 +288,16 @@ export default function App() {
     if (!id) return alert("يرجى إدخال البيانات المطلوبة");
     setLoading(true);
     try {
-      let isSupervisorLogin = type !== 'admin' && SHIFT_SUPERVISOR_IDS.has(id);
-      let snap;
-      if (isSupervisorLogin) {
-        snap = await getDoc(doc(db, "admins", id));
-        if (!snap.exists()) {
-          isSupervisorLogin = false;
-          snap = await getDoc(doc(db, "workers", id));
-        }
-      } else {
-        snap = await getDoc(doc(db, type === 'admin' ? "admins" : "workers", id));
-      }
-
+      const snap = await getDoc(doc(db, type === 'admin' ? "admins" : "workers", id));
       if (snap.exists()) {
-        const role = isSupervisorLogin ? 'Technician' : (snap.data().role || (type === 'admin' ? 'Admin' : 'Technician'));
-        if (type !== 'admin') {
-          await fetchYearlyLogsForWorker(snap.id, isSupervisorLogin);
-        }
-
-        setIsSupervisorReadOnly(isSupervisorLogin);
+        const role = snap.data().role || (type === 'admin' ? 'Admin' : 'Technician');
         setUserRole(role);
         setCurrentLabor({ id: snap.id, ...snap.data() });
+
+        // جلب البيانات السنوية فوراً للموظف لضمان عمل الكروت منذ أول ثانية دخول
+        if (type !== 'admin') {
+          await fetchYearlyLogsForWorker(snap.id);
+        }
 
         setActiveTab(type === 'admin' ? 'dashboard' : 'request');
       } else {
@@ -363,21 +344,15 @@ export default function App() {
       <main className="max-w-7xl mx-auto p-6">
         {/* Navigation Tabs */}
         <div className="flex flex-wrap gap-2 bg-[#0f0f0f] p-1.5 rounded-2xl border border-white/5 mb-12 w-fit mx-auto sm:mx-0 shadow-2xl">
-          {!isSupervisorReadOnly && userRole !== 'Technician' && (
+          {userRole !== 'Technician' && (
             <>
               <button onClick={()=>setActiveTab('dashboard')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='dashboard'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>الرقابة</button>
               <button onClick={()=>setActiveTab('admin_panel')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='admin_panel'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>الإدارة</button>
             </>
           )}
-          <button onClick={()=>setActiveTab('request')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='request'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>
-            {isSupervisorReadOnly ? 'الرصيد السنوي' : 'تسجيل'}
-          </button>
-          {!isSupervisorReadOnly && (
-            <>
-              <button onClick={()=>setActiveTab('my_history')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='my_history'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>سجلي</button>
-              <button onClick={()=>setActiveTab('contacts')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='contacts'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>📞 دليل الهاتف</button>
-            </>
-          )}
+          <button onClick={()=>setActiveTab('request')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='request'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>تسجيل</button>
+          <button onClick={()=>setActiveTab('my_history')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='my_history'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>سجلي</button>
+          <button onClick={()=>setActiveTab('contacts')} className={`px-8 py-3.5 rounded-xl font-black text-[11px] transition-all uppercase ${activeTab==='contacts'?'bg-red-600 text-white shadow-lg shadow-red-600/20':'text-gray-500 hover:text-white'}`}>📞 دليل الهاتف</button>
         </div>
 
         {activeTab === 'dashboard' && (
@@ -421,7 +396,12 @@ export default function App() {
                         {shiftList.map(shift => {
                           const workers = deptWorkers
                             .filter(w => (w.shift || 'عام') === shift)
-                            .map(w => ({ id: w.id, name: w.name }))
+                            .map(w => ({ id: w.id, name: w.name, isSupervisor: false }))
+                            .concat(SHIFT_SUPERVISORS[dept]?.[shift] ? [{
+                              id: SHIFT_SUPERVISORS[dept][shift].id,
+                              name: supervisorRecords[SHIFT_SUPERVISORS[dept][shift].id]?.name || SHIFT_SUPERVISORS[dept][shift].name,
+                              isSupervisor: true,
+                            }] : [])
                             .sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' }));
                           const presentCount = workers.filter(w => getStatus(w.id).isPresent).length;
                           
@@ -434,20 +414,13 @@ export default function App() {
                                 </div>
                               </div>
                               <div className="p-6 space-y-3.5">
-                                {SHIFT_SUPERVISORS[dept]?.[shift] && (
-                                  <div className="pb-3 border-b border-white/5" dir="rtl">
-                                    <p className="text-[10px] font-black text-gray-500 mb-1">مشرف الوردية</p>
-                                    <p className="font-bold text-xs text-white">
-                                      {supervisorRecords[SHIFT_SUPERVISORS[dept][shift].id]?.name || SHIFT_SUPERVISORS[dept][shift].name}
-                                    </p>
-                                  </div>
-                                )}
                                 {workers.length === 0 && <p className="text-center text-gray-700 text-[11px] font-black italic py-4">لا يوجد عمال في هذه الوردية</p>}
                                 {workers.map(w => {
                                   const status = getStatus(w.id);
                                   return (
                                     <div key={w.id} className={`flex justify-between items-center p-4 rounded-2xl border transition-all duration-300 ${status.color}`}>
                                       <span className="font-bold text-[12px] text-white truncate max-w-[170px]">
+                                        {w.isSupervisor && <span className="text-gray-500 text-[10px] ml-2">مشرف</span>}
                                         {w.name}
                                       </span>
                                       <span className="text-[10px] font-black uppercase italic tracking-tighter opacity-80">{status.label}</span>
@@ -502,7 +475,6 @@ export default function App() {
               </div>
             </div>
 
-            {!isSupervisorReadOnly && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-6xl mx-auto py-4">
               {/* Punch Card */}
               <div className="bg-white p-16 rounded-[4.5rem] text-center shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] border-b-[25px] border-red-600 transform hover:-translate-y-3 transition-all duration-700">
@@ -574,7 +546,6 @@ export default function App() {
                 </div>
               </div>
             </div>
-            )}
           </div>
         )}
 
